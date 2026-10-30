@@ -1,0 +1,26 @@
+# Changelog
+
+## 1.0.0
+
+First public release.
+
+- Encrypted `save.es3` reading by hooking the game's `ES3Saver.DecryptAndDecompress`
+  (no AES key shipped; offsets resolved by name and cached per build/ABI).
+- Text-preserving JSON editor: only changed scalars are rewritten, so the ES3
+  dialect and every unrelated byte stay intact.
+- DataVault checksum recomputation (`checksum = checksumSeed XOR values`) and a
+  validate action for all 413 vaults.
+- Writing back through the game's own `CompressAndEncrypt`, with automatic
+  verification (re-decrypt and compare a marker) and rollback on mismatch.
+- Tabs: Resources, Units, Abilities, Dark Lord, Variants, Collections,
+  Mementos, Advanced, Log.
+- Units: level/essence/awake/training, base/grow stats, custom name, trait
+  (`prefix`), visual variant (`Irochi`), skin, innate trait display,
+  promotion (`RankUp`/`TRANSCEND`), monster replacement by type.
+- Abilities: 473-key part catalog, per-slot equip, clone a monster's set.
+- Dark Lord: six forms (unlock, level, tokens), aspect stage, per-ability
+  authority stage, skin (`lastPlaySkin`), active form via PlayerPrefs.
+- Variants: stored variant counts and research levels.
+- Collections: counters (costume/codex progress).
+- Global search filter across every list.
+- Runs from source (`run.bat`) or as a one-file executable (`build.bat`).

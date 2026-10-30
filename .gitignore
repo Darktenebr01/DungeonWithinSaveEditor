@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+dist/
+build/
+work/
+*.spec.bak
+*.exe
+*.es3
+*.bak
+*.json.gz
+tmp/
+docs/*.local.png
+.env
