@@ -63,6 +63,30 @@ def _abi_short(abi):
     return abi
 
 
+def detect_abi(adb, serial, log=print, tries=15):
+    """Read the device ABI, retrying across the adbd restart that `adb root` causes."""
+    for i in range(tries):
+        rc, out, err = dw_android.adb(adb, serial, 'shell', 'getprop', 'ro.product.cpu.abi', timeout=10)
+        if (out or '').strip():
+            return _abi_short(out)
+        rc, out, err = dw_android.adb(adb, serial, 'shell', 'getprop', 'ro.product.cpu.abilist', timeout=10)
+        if (out or '').strip():
+            return _abi_short(out.strip().split(',')[0])
+        rc, out, err = dw_android.adb(adb, serial, 'shell', 'uname -m', timeout=10)
+        machine = (out or '').strip()
+        if machine:
+            return _abi_short({'aarch64': 'arm64', 'armv8l': 'arm', 'x86_64': 'x86_64',
+                               'i686': 'x86'}.get(machine, machine))
+        try:
+            dw_android.adb(adb, serial, 'wait-for-device', timeout=10)
+        except Exception:
+            pass
+        time.sleep(1)
+        if i % 3 == 0:
+            log('waiting for the device to come back after adbd restart (%d/%d)' % (i + 1, tries))
+    return ''
+
+
 def prepare(adb, serial, log=print, wait=15):
     """Push and start frida-server on the device. Returns a status dict."""
     if not adb:
@@ -101,9 +125,10 @@ def prepare(adb, serial, log=print, wait=15):
         full = prefix + ('"%s"' % cmd if prefix else cmd)
         return dw_android.adb(adb, serial, 'shell', full, timeout=timeout)
 
-    rc, out, err = dw_android.adb(adb, serial, 'shell', 'getprop', 'ro.product.cpu.abi', timeout=15)
-    abi = _abi_short(out)
+    abi = detect_abi(adb, serial, log=log)
     log('device ABI: %s' % (abi or '?'))
+    if not abi:
+        raise RuntimeError('could not read the device ABI (device not answering after adb root)')
 
     asset = bundled_server(abi)
     if not asset:

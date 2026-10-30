@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.5
+
+- ABI detection now retries across the adbd restart caused by `adb root`: it reads
+  `ro.product.cpu.abi`, then `ro.product.cpu.abilist`, then `uname -m`, waiting for the device
+  between attempts. Fixes "device ABI: ?" and "no bundled frida-server for ABI ''".
+
 ## 1.3.4
 
 - Prepare device now tries `adb root` before `su`, which is how most emulators expose root
