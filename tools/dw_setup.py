@@ -71,8 +71,20 @@ def prepare(adb, serial, log=print, wait=15):
     rc, out, err = dw_android.adb(adb, serial, 'shell', 'id', timeout=15)
     already_root = rc == 0 and 'uid=0' in (out or '')
     prefix = ''
+    if not already_root:
+        # most emulators expose root through adbd (`adb root`) rather than su
+        rc_root, out_root, err_root = dw_android.adb(adb, serial, 'root', timeout=20)
+        log('adb root: %s' % ((out_root or err_root or '').strip()[:120] or ('rc=%d' % rc_root)))
+        try:
+            dw_android.adb(adb, serial, 'wait-for-device', timeout=20)
+        except Exception:
+            pass
+        time.sleep(1)
+        rc, out, err = dw_android.adb(adb, serial, 'shell', 'id', timeout=15)
+        already_root = rc == 0 and 'uid=0' in (out or '')
+
     if already_root:
-        log('adb shell is already root')
+        log('adb shell is root')
     else:
         rc, out, err = dw_android.adb(adb, serial, 'shell', 'su -c id', timeout=15)
         if rc == 0 and 'uid=0' in (out or ''):
@@ -80,8 +92,10 @@ def prepare(adb, serial, log=print, wait=15):
             log('using su for root commands')
         else:
             raise RuntimeError(
-                'root is required: adb shell is not root and su is unavailable (%s)'
-                % ((err or out or '').strip()[:160]))
+                'root is required. Enable root in the emulator settings (MuMu: Settings -> Root '
+                'permission; LDPlayer: Settings -> Root), or use a rooted phone. '
+                'adb root also failed: %s'
+                % ((out_root or err_root or '').strip()[:120]))
 
     def sh(cmd, timeout=20):
         full = prefix + ('"%s"' % cmd if prefix else cmd)

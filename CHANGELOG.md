@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.4
+
+- Prepare device now tries `adb root` before `su`, which is how most emulators expose root
+  (MuMu, LDPlayer, BlueStacks). Only if both fail does it stop, with instructions to enable
+  the emulator's root setting or use a rooted phone.
+- The failure message includes what `adb root` answered, so the cause is visible.
+
 ## 1.3.3
 
 - The bundled adb is copied once to `%LOCALAPPDATA%\DungeonWithinSaveEditor\platform-tools` and run
