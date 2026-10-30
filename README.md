@@ -44,6 +44,8 @@ A search box at the top filters every list. **Apply to file** writes the local
 JSON, **Encrypt save** turns it back into a normal `ES3E` save, **Validate**
 recomputes and checks all 413 DataVault checksums.
 
+![Abilities](docs/abilities.png)
+
 ## Install and run
 
 Requirements: Windows 10/11, Python 3.10+, `adb` (Android platform-tools), and

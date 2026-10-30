@@ -25,7 +25,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-import dw_save_editor as ed  # noqa: E402
+import dw_save_editor as ed
+import dw_theme as theme  # noqa: E402
 import dw_android as android  # noqa: E402
 
 CONFIG_PATH = os.path.join(os.path.expanduser('~'), '.dw_save_editor.json')
@@ -59,11 +60,30 @@ def save_config(cfg):
         pass
 
 
+class NavBook(ttk.Frame):
+    """Page container used instead of a notebook (sidebar navigation)."""
+
+    def __init__(self, master, app):
+        super().__init__(master, style='TFrame')
+        self.app = app
+        self.pages = []
+
+    def add(self, frame, text=''):
+        self.pages.append(frame)
+        frame.pack_forget()
+
+    def select(self, frame):
+        page = getattr(self.app, '_page_of', {}).get(frame, frame)
+        self.app.show_page(page)
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        theme.apply(self)
         self.title('Dungeon Within Save Editor')
-        self.geometry('1180x760')
+        self.geometry('1280x820')
+        self.minsize(1080, 680)
         self.cfg = load_config()
         self.text = None
         self.obj = None
@@ -80,61 +100,115 @@ class App(tk.Tk):
             self.after(600, lambda: self.on_auto_detect(silent=True))
 
     # ---------------------------------------------------------------- UI
-    def _build_ui(self):
-        top = ttk.Frame(self, padding=6)
-        top.pack(fill='x')
-        ttk.Button(top, text='Open save…', command=self.on_open).pack(side='left')
-        ttk.Button(top, text='Find save (auto)', command=self.on_auto_detect).pack(side='left', padx=4)
-        ttk.Button(top, text='Convert encrypted…', command=self.on_convert).pack(side='left', padx=4)
-        ttk.Button(top, text='Launch game (plain mode)', command=self.on_launch).pack(side='left', padx=4)
-        ttk.Button(top, text='Apply to file', command=self.on_apply).pack(side='left', padx=12)
-        ttk.Button(top, text='Encrypt save', command=self.on_encrypt_save).pack(side='left', padx=4)
-        ttk.Button(top, text='Restore encrypted save', command=self.on_restore_encrypted).pack(side='left', padx=4)
-        ttk.Button(top, text='Validate', command=self.on_validate).pack(side='left')
-        ttk.Button(top, text='Backup', command=self.on_backup).pack(side='left', padx=4)
-        self.path_var = tk.StringVar(value='(no file)')
-        ttk.Label(top, textvariable=self.path_var).pack(side='left', padx=12)
+    def _scroll_page(self, key):
+        outer = ttk.Frame(self.nb)
+        canvas = tk.Canvas(outer, bg=theme.BG, highlightthickness=0, bd=0)
+        vs = ttk.Scrollbar(outer, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=vs.set)
+        vs.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
+        inner = ttk.Frame(canvas)
+        win = canvas.create_window((0, 0), window=inner, anchor='nw')
+        inner.bind('<Configure>', lambda e, c=canvas: c.configure(scrollregion=c.bbox('all')))
+        canvas.bind('<Configure>', lambda e, c=canvas, w=win, f=inner: (
+            c.itemconfigure(w, width=e.width),
+            c.itemconfigure(w, height=max(e.height, f.winfo_reqheight()))))
 
-        filt = ttk.Frame(self, padding=(6, 0, 6, 4))
-        filt.pack(fill='x')
-        ttk.Label(filt, text='Search:').pack(side='left')
+        def wheel(event, c=canvas):
+            step = -1 if getattr(event, 'delta', 0) > 0 else 1
+            c.yview_scroll(step, 'units')
+
+        canvas.bind('<Enter>', lambda e, c=canvas, fn=wheel: c.bind_all('<MouseWheel>', fn))
+        canvas.bind('<Leave>', lambda e, c=canvas: c.unbind_all('<MouseWheel>'))
+        self._page_of[inner] = outer
+        self.nb.add(outer)
+        return inner
+
+    def _build_ui(self):
+        self._titles = {}
+        self._nav_buttons = {}
+        self._nav_labels = {}
+        self._page_of = {}
+
+        bar = tk.Frame(self, bg=theme.BG2, height=46)
+        bar.pack(fill='x')
+        bar.pack_propagate(False)
+        tk.Label(bar, text='\u25c6', bg=theme.BG2, fg=theme.ACCENT,
+                 font=('Segoe UI', 12, 'bold')).pack(side='left', padx=(12, 6))
+        tk.Label(bar, text='Dungeon Within Save Editor', bg=theme.BG2, fg=theme.TEXT,
+                 font=('Segoe UI', 10, 'bold')).pack(side='left')
+        ttk.Button(bar, text='Apply to file', style='Accent.TButton',
+                   command=self.on_apply).pack(side='right', padx=(6, 12), pady=8)
+        ttk.Button(bar, text='Encrypt save', style='Accent.TButton',
+                   command=self.on_encrypt_save).pack(side='right', pady=8)
+        ttk.Button(bar, text='Validate', style='Bar.TButton',
+                   command=self.on_validate).pack(side='right', pady=8)
+        ttk.Button(bar, text='Backup', style='Bar.TButton',
+                   command=self.on_backup).pack(side='right', pady=8)
+
+        sf = tk.Frame(bar, bg=theme.BG2)
+        sf.pack(side='right', padx=14)
+        tk.Label(sf, text='SEARCH', bg=theme.BG2, fg=theme.DIM,
+                 font=('Segoe UI', 8, 'bold')).pack(side='left', padx=(0, 6))
         self.filter_var = tk.StringVar()
-        ttk.Entry(filt, textvariable=self.filter_var, width=34).pack(side='left', padx=4)
-        ttk.Button(filt, text='Clear', command=lambda: self.filter_var.set('')).pack(side='left')
-        ttk.Label(filt, text='(filters the lists in every tab)', foreground='#666').pack(side='left', padx=8)
+        ttk.Entry(sf, textvariable=self.filter_var, width=30).pack(side='left')
         self.filter_var.trace_add('write', lambda *a: self.on_filter_changed())
 
-        settings = ttk.LabelFrame(self, text='Connection (for convert / launch)', padding=6)
-        settings.pack(fill='x', padx=6, pady=(0, 6))
-        self.endpoint = tk.StringVar(value=self.cfg['endpoint'])
-        self.adb = tk.StringVar(value=self.cfg['adb'])
-        self.serial = tk.StringVar(value=self.cfg['serial'])
-        self.device_save = tk.StringVar(value=self.cfg['device_save'])
-        row = ttk.Frame(settings); row.pack(fill='x')
-        ttk.Label(row, text='frida endpoint (blank = USB)').pack(side='left')
-        ttk.Entry(row, textvariable=self.endpoint, width=20).pack(side='left', padx=(4, 16))
-        ttk.Label(row, text='adb').pack(side='left')
-        ttk.Entry(row, textvariable=self.adb, width=62).pack(side='left', padx=4)
-        row2 = ttk.Frame(settings); row2.pack(fill='x', pady=(4, 0))
-        ttk.Label(row2, text='serial').pack(side='left')
-        self.serial_combo = ttk.Combobox(row2, textvariable=self.serial, width=18)
-        self.serial_combo.pack(side='left', padx=(4, 8))
-        ttk.Button(row2, text='Detect device', command=self.on_detect_device).pack(side='left', padx=(0, 12))
-        ttk.Label(row2, text='device save path').pack(side='left')
-        ttk.Entry(row2, textvariable=self.device_save, width=70).pack(side='left', padx=4)
+        st = tk.Frame(self, bg=theme.BG2, height=28)
+        st.pack(side='bottom', fill='x')
+        st.pack_propagate(False)
+        self.status_dot = tk.Canvas(st, width=10, height=10, bg=theme.BG2, highlightthickness=0)
+        self.status_dot.pack(side='left', padx=(12, 5), pady=9)
+        self._dot = self.status_dot.create_oval(1, 1, 9, 9, fill=theme.DIM, outline='')
+        self.status_var = tk.StringVar(value='Ready')
+        tk.Label(st, textvariable=self.status_var, bg=theme.BG2, fg=theme.MUTED,
+                 font=theme.SMALL).pack(side='left')
+        self.path_var = tk.StringVar(value='(no file)')
+        tk.Label(st, textvariable=self.path_var, bg=theme.BG2, fg=theme.DIM,
+                 font=theme.SMALL).pack(side='left', padx=16)
+        tk.Label(st, text='v1.0.0', bg=theme.BG2, fg=theme.DIM,
+                 font=theme.SMALL).pack(side='right', padx=12)
 
-        nb = ttk.Notebook(self)
-        nb.pack(fill='both', expand=True, padx=6)
-        self.nb = nb
-        self.tab_res = ttk.Frame(nb); nb.add(self.tab_res, text='Resources')
-        self.tab_units = ttk.Frame(nb); nb.add(self.tab_units, text='Units')
-        self.tab_abil = ttk.Frame(nb); nb.add(self.tab_abil, text='Abilities')
-        self.tab_dl = ttk.Frame(nb); nb.add(self.tab_dl, text='Dark Lord')
-        self.tab_var = ttk.Frame(nb); nb.add(self.tab_var, text='Variants')
-        self.tab_col = ttk.Frame(nb); nb.add(self.tab_col, text='Collections')
-        self.tab_mem = ttk.Frame(nb); nb.add(self.tab_mem, text='Mementos')
-        self.tab_adv = ttk.Frame(nb); nb.add(self.tab_adv, text='Advanced')
-        self.tab_log = ttk.Frame(nb); nb.add(self.tab_log, text='Log')
+        body = tk.Frame(self, bg=theme.BG)
+        body.pack(fill='both', expand=True)
+
+        side = tk.Frame(body, bg=theme.SIDEBAR, width=212)
+        side.pack(side='left', fill='y')
+        side.pack_propagate(False)
+        tk.Label(side, text='Dungeon Within', bg=theme.SIDEBAR, fg=theme.TEXT,
+                 font=('Segoe UI', 13, 'bold'), anchor='w').pack(fill='x', padx=16, pady=(16, 0))
+        tk.Label(side, text='save editor 1.0', bg=theme.SIDEBAR, fg=theme.DIM,
+                 font=theme.SMALL, anchor='w').pack(fill='x', padx=16, pady=(0, 12))
+        self._side = side
+
+        content = tk.Frame(body, bg=theme.BG)
+        content.pack(side='left', fill='both', expand=True)
+        head = tk.Frame(content, bg=theme.BG)
+        head.pack(fill='x', padx=22, pady=(16, 4))
+        self.page_title = tk.Label(head, text='', bg=theme.BG, fg=theme.TEXT,
+                                   font=theme.TITLE, anchor='w')
+        self.page_title.pack(fill='x')
+        self.page_sub = tk.Label(head, text='', bg=theme.BG, fg=theme.MUTED,
+                                 font=theme.BASE, anchor='w')
+        self.page_sub.pack(fill='x', pady=(2, 0))
+
+        host = tk.Frame(content, bg=theme.BG)
+        host.pack(fill='both', expand=True, padx=14, pady=(0, 6))
+        self.nb = NavBook(host, self)
+        self.nb.pack(fill='both', expand=True)
+
+        self.tab_conn = self._scroll_page('conn')
+        self.tab_res = self._scroll_page('res')
+        self.tab_units = self._scroll_page('units')
+        self.tab_abil = self._scroll_page('abil')
+        self.tab_dl = self._scroll_page('dl')
+        self.tab_var = self._scroll_page('var')
+        self.tab_col = self._scroll_page('col')
+        self.tab_mem = self._scroll_page('mem')
+        self.tab_adv = self._scroll_page('adv')
+        self.tab_log = self._scroll_page('log')
+
+        self._build_connection()
         self._build_resources()
         self._build_units()
         self._build_abilities()
@@ -144,7 +218,108 @@ class App(tk.Tk):
         self._build_mementos()
         self._build_advanced()
         self._build_log()
+        self._build_nav()
 
+        self.nb.select(self.tab_res)
+
+    def _build_nav(self):
+        specs = [
+            ('SESSION', [
+                ('Connection', self.tab_conn, 'Connection',
+                 'Device, adb and Frida settings.'),
+            ]),
+            ('SAVE', [
+                ('Resources', self.tab_res, 'Resources',
+                 'Currencies and resources stored in USER_DATA.storage.'),
+                ('Units', self.tab_units, 'Units',
+                 'Monster roster: progress, stats, traits and variants.'),
+                ('Abilities', self.tab_abil, 'Abilities',
+                 'Equipped parts per monster, and cloning between monsters.'),
+            ]),
+            ('DARK LORD', [
+                ('Dark Lord', self.tab_dl, 'Dark Lord',
+                 'The six forms, aspect and authority stages, skin.'),
+                ('Variants', self.tab_var, 'Variants',
+                 'Stored variant counts and variant research levels.'),
+                ('Collections', self.tab_col, 'Collections',
+                 'Collection counters used by codex and costume unlocks.'),
+            ]),
+            ('TOOLS', [
+                ('Mementos', self.tab_mem, 'Mementos', 'Memento buy counts.'),
+                ('Advanced', self.tab_adv, 'Advanced', 'Read or write any JSON path.'),
+                ('Log', self.tab_log, 'Log', 'Everything the Frida side reports.'),
+            ]),
+        ]
+        for section, items in specs:
+            tk.Label(self._side, text=section, bg=theme.SIDEBAR, fg=theme.DIM,
+                     font=('Segoe UI', 8, 'bold'), anchor='w').pack(fill='x', padx=16, pady=(12, 2))
+            for label, frame, title, sub in items:
+                page = self._page_of.get(frame, frame)
+                btn = tk.Button(self._side, text=label, bg=theme.SIDEBAR, fg=theme.MUTED,
+                                activebackground=theme.CARD, activeforeground=theme.TEXT,
+                                bd=0, highlightthickness=0, anchor='w', padx=16, pady=6,
+                                font=theme.BASE, command=lambda f=page: self.nb.select(f))
+                btn.pack(fill='x')
+                self._nav_buttons[page] = btn
+                self._nav_labels[page] = label
+                self._titles[page] = (title, sub)
+
+    def show_page(self, frame):
+        if frame not in self._titles:
+            return
+        for page in self.nb.pages:
+            page.pack_forget()
+        frame.pack(fill='both', expand=True)
+        title, sub = self._titles[frame]
+        self.page_title.configure(text=title)
+        self.page_sub.configure(text=sub)
+        for f, btn in self._nav_buttons.items():
+            on = f is frame
+            btn.configure(bg=theme.ACCENT_DARK if on else theme.SIDEBAR,
+                          fg=theme.ACCENT if on else theme.MUTED,
+                          font=('Segoe UI', 9, 'bold') if on else theme.BASE,
+                          text=('\u258c ' if on else '') + self._nav_labels[f])
+        self._current_page = frame
+
+    def set_status(self, text, color=None):
+        if hasattr(self, 'status_var'):
+            self.status_var.set(text)
+        if hasattr(self, 'status_dot'):
+            self.status_dot.itemconfigure(self._dot, fill=color or theme.DIM)
+
+    def _build_connection(self):
+        f = self.tab_conn
+        card = ttk.LabelFrame(f, text='Connection (for convert / launch)', padding=10)
+        card.pack(fill='x', padx=4, pady=(4, 8))
+        self.endpoint = tk.StringVar(value=self.cfg['endpoint'])
+        self.adb = tk.StringVar(value=self.cfg['adb'])
+        self.serial = tk.StringVar(value=self.cfg['serial'])
+        self.device_save = tk.StringVar(value=self.cfg['device_save'])
+        row = ttk.Frame(card); row.pack(fill='x')
+        ttk.Label(row, text='frida endpoint (blank = USB)', style='CardMuted.TLabel').pack(side='left')
+        ttk.Entry(row, textvariable=self.endpoint, width=22).pack(side='left', padx=(6, 18))
+        ttk.Label(row, text='adb', style='CardMuted.TLabel').pack(side='left')
+        ttk.Entry(row, textvariable=self.adb, width=70).pack(side='left', padx=6)
+        row2 = ttk.Frame(card); row2.pack(fill='x', pady=(8, 0))
+        ttk.Label(row2, text='serial', style='CardMuted.TLabel').pack(side='left')
+        self.serial_combo = ttk.Combobox(row2, textvariable=self.serial, width=18)
+        self.serial_combo.pack(side='left', padx=(6, 10))
+        ttk.Button(row2, text='Detect device', command=self.on_detect_device).pack(side='left', padx=(0, 14))
+        ttk.Label(row2, text='device save path', style='CardMuted.TLabel').pack(side='left')
+        ttk.Entry(row2, textvariable=self.device_save, width=78).pack(side='left', padx=6)
+
+        card2 = ttk.LabelFrame(f, text='Save file', padding=10)
+        card2.pack(fill='x', padx=4, pady=(0, 8))
+        r1 = ttk.Frame(card2); r1.pack(fill='x')
+        ttk.Button(r1, text='Open save\u2026', command=self.on_open).pack(side='left')
+        ttk.Button(r1, text='Find save (auto)', command=self.on_auto_detect).pack(side='left', padx=6)
+        ttk.Button(r1, text='Convert encrypted\u2026', command=self.on_convert).pack(side='left', padx=6)
+        ttk.Button(r1, text='Backup', command=self.on_backup).pack(side='left', padx=6)
+        r2 = ttk.Frame(card2); r2.pack(fill='x', pady=(8, 0))
+        ttk.Button(r2, text='Launch game (plain mode)', command=self.on_launch).pack(side='left')
+        ttk.Button(r2, text='Restore encrypted save', command=self.on_restore_encrypted).pack(side='left', padx=6)
+        ttk.Label(card2, text='Prefer Encrypt save: it keeps the normal ES3E container.',
+                  style='CardMuted.TLabel').pack(anchor='w', pady=(8, 0))
     def _build_resources(self):
         f = self.tab_res
         cols = ('key', 'value')
@@ -853,11 +1028,13 @@ class App(tk.Tk):
         ttk.Button(row, text='Set JSON literal', command=self.on_adv_set).pack(side='left', padx=6)
         ttk.Label(f, text='Value / JSON:').pack(anchor='w', padx=8)
         self.adv_text = tk.Text(f, height=18)
+        theme.style_text(self.adv_text)
         self.adv_text.pack(fill='both', expand=True, padx=8, pady=(0, 8))
 
     def _build_log(self):
         f = self.tab_log
         self.log_text = tk.Text(f, height=20, state='disabled')
+        theme.style_text(self.log_text, wrap='word')
         self.log_text.pack(fill='both', expand=True, padx=8, pady=8)
 
     # ------------------------------------------------------------- helpers
