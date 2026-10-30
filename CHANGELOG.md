@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- New **Facilities** tab: facility type (facKey), durability (bonus), modification list
+  (prefixs, e.g. MOD_BTL_N_RGN) and rank-up per placed facility, with a 49-entry
+  facility-type catalog.
+- Dark theme UI with sidebar navigation, page headers, cards, global search and status bar.
+- Standalone release build attached to GitHub Releases.
+
 ## 1.0.0
 
 First public release.
