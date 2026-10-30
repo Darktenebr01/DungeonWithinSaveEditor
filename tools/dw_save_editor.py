@@ -867,6 +867,21 @@ def facility_catalog():
     return []
 
 
+def facility_prefix_catalog():
+    candidates = [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'facility_prefixes.json')]
+    base = getattr(sys, '_MEIPASS', None)
+    if base:
+        candidates.insert(0, os.path.join(base, 'facility_prefixes.json'))
+    candidates.append(os.path.join(os.getcwd(), 'facility_prefixes.json'))
+    for cat in candidates:
+        if os.path.exists(cat):
+            try:
+                return json.load(open(cat, encoding='utf-8'))
+            except Exception:
+                pass
+    return []
+
+
 def mw_spans(text):
     ai, aj = array_span(text, 'USER_DATA.mwExp')
     return list(split_children(text, (ai, aj), '['))

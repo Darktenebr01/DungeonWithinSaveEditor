@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Facilities: ability-modifier field plus a modification picker (dropdown + Add, still editable as a
+  comma-separated list); the modification list is the card's Ability Modifiers count.
+- Facility table shows the bonus index and modification list, and fits without scrolling.
+
 ## 1.1.0
 
 - New **Facilities** tab: facility type (facKey), durability (bonus), modification list

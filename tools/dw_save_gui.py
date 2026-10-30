@@ -234,7 +234,7 @@ class App(tk.Tk):
                 ('Resources', self.tab_res, 'Resources',
                  'Currencies and resources stored in USER_DATA.storage.'),
                 ('Facilities', self.tab_fac, 'Facilities',
-                 'Placed facilities: type, durability, modifications and rank-up.'),
+                 'Placed facilities: type, ability modifiers/durability, modifications and rank-up.'),
                 ('Units', self.tab_units, 'Units',
                  'Monster roster: progress, stats, traits and variants.'),
                 ('Abilities', self.tab_abil, 'Abilities',
@@ -349,9 +349,9 @@ class App(tk.Tk):
 
     def _build_facilities(self):
         f = self.tab_fac
-        cols = ('id', 'facility', 'durability', 'mods', 'rankup')
-        self.fac_tree = ttk.Treeview(f, columns=cols, show='headings', height=22)
-        for c, w in (('id', 50), ('facility', 230), ('durability', 90), ('mods', 220), ('rankup', 80)):
+        cols = ('id', 'facility', 'bonus', 'mods', 'rankup')
+        self.fac_tree = ttk.Treeview(f, columns=cols, show='headings', height=12)
+        for c, w in (('id', 50), ('facility', 230), ('bonus', 80), ('mods', 230), ('rankup', 80)):
             self.fac_tree.heading(c, text=c.capitalize())
             self.fac_tree.column(c, width=w, anchor='w')
         self.fac_tree.pack(fill='x', padx=(4, 4), pady=(4, 6))
@@ -370,9 +370,13 @@ class App(tk.Tk):
         self.fac_key_combo.pack(side='left', padx=6)
 
         row2 = ttk.Frame(card); row2.pack(fill='x', pady=(6, 0))
-        ttk.Label(row2, text='Durability (bonus)', style='CardMuted.TLabel', width=14).pack(side='left')
+        ttk.Label(row2, text='Ability modifiers', style='CardMuted.TLabel', width=14).pack(side='left')
         self.fac_bonus = tk.StringVar()
-        ttk.Entry(row2, textvariable=self.fac_bonus, width=8).pack(side='left', padx=6)
+        self.fac_bonus_combo = ttk.Combobox(row2, textvariable=self.fac_bonus, width=6,
+                                            values=[str(i) for i in range(0, 11)])
+        self.fac_bonus_combo.pack(side='left', padx=6)
+        ttk.Label(row2, text='(bonus index: drives durability and modifier slots)',
+                  style='CardMuted.TLabel').pack(side='left', padx=(4, 0))
         ttk.Label(row2, text='RankUp', style='CardMuted.TLabel', width=8).pack(side='left', padx=(18, 0))
         self.fac_rankup = tk.StringVar()
         ttk.Entry(row2, textvariable=self.fac_rankup, width=8).pack(side='left', padx=6)
@@ -380,10 +384,19 @@ class App(tk.Tk):
         row3 = ttk.Frame(card); row3.pack(fill='x', pady=(6, 0))
         ttk.Label(row3, text='Modifications', style='CardMuted.TLabel', width=14).pack(side='left')
         self.fac_mods = tk.StringVar()
-        ttk.Entry(row3, textvariable=self.fac_mods, width=64).pack(side='left', padx=6)
-        ttk.Label(card, text='Comma-separated modification keys, e.g. MOD_BTL_N_RGN. '
-                             'The facility ability comes from the facility type; '
-                             'these are the extra modifications shown on the card.',
+        ttk.Entry(row3, textvariable=self.fac_mods, width=52).pack(side='left', padx=6)
+
+        row3b = ttk.Frame(card); row3b.pack(fill='x', pady=(4, 0))
+        ttk.Label(row3b, text='', width=14).pack(side='left')
+        self.fac_mod_pick = tk.StringVar()
+        self.fac_mod_combo = ttk.Combobox(row3b, textvariable=self.fac_mod_pick, width=30,
+                                          values=ed.facility_prefix_catalog())
+        self.fac_mod_combo.pack(side='left', padx=6)
+        ttk.Button(row3b, text='Add modification', command=self.on_add_mod).pack(side='left', padx=4)
+        ttk.Button(row3b, text='Clear', command=lambda: self.fac_mods.set('')).pack(side='left')
+        ttk.Label(card, text='Pick a modification from the dropdown and press Add, or type the '
+                             'comma-separated keys directly. The modification count is the '
+                             '"Ability Modifiers" value on the card.',
                   style='CardMuted.TLabel').pack(anchor='w', pady=(6, 0))
 
         row4 = ttk.Frame(card); row4.pack(fill='x', pady=(8, 0))
@@ -391,6 +404,15 @@ class App(tk.Tk):
                    command=self.on_set_facility).pack(side='left')
         ttk.Button(row4, text='Clear modifications',
                    command=lambda: self.fac_mods.set('')).pack(side='left', padx=6)
+
+    def on_add_mod(self):
+        key = (self.fac_mod_pick.get() or '').strip()
+        if not key:
+            return
+        mods = [m.strip() for m in self.fac_mods.get().split(',') if m.strip()]
+        if key not in mods:
+            mods.append(key)
+        self.fac_mods.set(','.join(mods))
 
     def _refresh_facilities(self):
         if not hasattr(self, 'fac_tree'):
