@@ -53,6 +53,9 @@ A search box at the top filters every list. **Apply to file** writes the local J
 
 ## Install and run
 
+> Zero-install: the exe ships `adb.exe` and `frida-server` for x86_64/arm64. Enable root on the
+device, click **Prepare device**, and the editor pushes and starts everything itself.
+
 **Download:** the standalone Windows build is in
 [Releases](https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest)
 (`DungeonWithinSaveEditor.exe`, no Python needed).
@@ -140,6 +143,8 @@ tools/dw_capture_mawang.py  capture Dark Lord costume data
 tools/parts_catalog.json part key catalog
 tools/facility_catalog.json facility type catalog
 tools/facility_prefixes.json modification key catalog
+tools/dw_setup.py       prepare device: push and start bundled frida-server
+vendor/                 bundled adb + frida-server (xz) and their licenses
 docs/SAVE_EDITOR.md      save format, encryption flow, portability notes
 docs/index.html          landing page (GitHub Pages)
 tests/                   parser/checksum tests

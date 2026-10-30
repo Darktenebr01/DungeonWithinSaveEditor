@@ -34,9 +34,28 @@ SAVE_PATH_TEMPLATES = (
 )
 
 
+def bundled_adb():
+    roots = []
+    if getattr(sys, 'frozen', False):
+        roots.append(os.path.dirname(sys.executable))
+    base = getattr(sys, '_MEIPASS', None)
+    if base:
+        roots.append(base)
+    roots.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    roots.append(os.getcwd())
+    for root in roots:
+        p = os.path.join(root, 'vendor', 'platform-tools', 'adb.exe')
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def find_adb(override=None):
     if override and os.path.exists(override):
         return override
+    bundled = bundled_adb()
+    if bundled:
+        return bundled
     env = os.environ.get('ADB')
     if env and os.path.exists(env):
         return env

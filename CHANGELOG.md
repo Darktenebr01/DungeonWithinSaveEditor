@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Zero-install release: bundles `adb.exe` (platform-tools) and `frida-server` 17.24.3 for
+  x86_64 and arm64, compressed with xz, with their licenses under `vendor/`.
+- New **Prepare device** button: checks root, picks the ABI, pushes frida-server and starts it.
+- `find_adb` prefers the bundled adb, so no system install is needed.
+
 ## 1.2.0
 
 - Facilities: ability-modifier field plus a modification picker (dropdown + Add, still editable as a

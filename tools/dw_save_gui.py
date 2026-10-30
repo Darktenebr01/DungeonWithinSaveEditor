@@ -33,7 +33,7 @@ CONFIG_PATH = os.path.join(os.path.expanduser('~'), '.dw_save_editor.json')
 
 DEFAULTS = {
     'endpoint': '',
-    'adb': r'E:\Program Files\Netease\MuMuPlayer\nx_device\12.0\shell\adb.exe',
+    'adb': '',
     'serial': 'emulator-5554',
     'device_save': '/sdcard/Android/data/com.GameCoaster.DungeonWithin/files/save.es3',
     'dec_rva': '0x3453fa3',
@@ -308,7 +308,8 @@ class App(tk.Tk):
         ttk.Label(row2, text='serial', style='CardMuted.TLabel').pack(side='left')
         self.serial_combo = ttk.Combobox(row2, textvariable=self.serial, width=18)
         self.serial_combo.pack(side='left', padx=(6, 10))
-        ttk.Button(row2, text='Detect device', command=self.on_detect_device).pack(side='left', padx=(0, 14))
+        ttk.Button(row2, text='Detect device', command=self.on_detect_device).pack(side='left', padx=(0, 8))
+        ttk.Button(row2, text='Prepare device (root + frida-server)', style='Accent.TButton', command=self.on_prepare_device).pack(side='left', padx=(0, 14))
         ttk.Label(row2, text='device save path', style='CardMuted.TLabel').pack(side='left')
         ttk.Entry(row2, textvariable=self.device_save, width=78).pack(side='left', padx=6)
 
@@ -404,6 +405,21 @@ class App(tk.Tk):
                    command=self.on_set_facility).pack(side='left')
         ttk.Button(row4, text='Clear modifications',
                    command=lambda: self.fac_mods.set('')).pack(side='left', padx=6)
+
+    def on_prepare_device(self):
+        def work():
+            try:
+                import dw_setup
+                adb = android.find_adb(self.adb.get().strip() or None)
+                serial = self.serial.get().strip()
+                self.log('preparing device: root check, frida-server push and start…')
+                res = dw_setup.prepare(adb, serial, log=self.log)
+                self.log('device ready: ABI %s, pid %s' % (res.get('abi'), res.get('pid')))
+                self.after(0, lambda: messagebox.showinfo('Prepare device', 'frida-server is running (%s).' % res.get('abi')))
+            except Exception as e:
+                self.log('prepare failed: %s' % e)
+                self.after(0, lambda: messagebox.showerror('Prepare device', str(e)))
+        threading.Thread(target=work, daemon=True).start()
 
     def on_add_mod(self):
         key = (self.fac_mod_pick.get() or '').strip()
