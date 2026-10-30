@@ -104,7 +104,7 @@ def prepare(adb, serial, log=print, wait=15):
         os.chmod(local, 0o755)
         log('extracted frida-server (%.1f MB)' % (os.path.getsize(local) / 1048576))
 
-        sh('pkill -f frida-server', timeout=15)
+        sh('pkill -9 -f frida', timeout=15)
         rc, out, err = dw_android.adb(adb, serial, 'push', local, REMOTE, timeout=300)
         if rc != 0:
             raise RuntimeError('push failed: %s' % ((err or out or '').strip()[:200]))
@@ -119,7 +119,7 @@ def prepare(adb, serial, log=print, wait=15):
 
         pid = None
         for _ in range(max(1, wait)):
-            rc, out, err = sh('pgrep -f frida-server', timeout=15)
+            rc, out, err = sh('pgrep -f frida', timeout=15)
             if rc == 0 and (out or '').strip():
                 pid = (out or '').strip().split()[-1]
                 break
@@ -130,3 +130,33 @@ def prepare(adb, serial, log=print, wait=15):
         return {'abi': abi, 'asset': os.path.basename(asset), 'pid': pid}
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def frida_running(adb=None, serial=None, timeout=3):
+    if adb and serial:
+        rc, out, err = dw_android.adb(adb, serial, 'shell', 'pgrep -f frida', timeout=10)
+        if rc != 0 or not (out or '').strip():
+            return False
+    try:
+        import frida
+    except Exception:
+        return False
+    try:
+        device = frida.get_usb_device(timeout=timeout)
+        device.enumerate_processes()
+        return True
+    except Exception:
+        return False
+
+
+def ensure_frida(adb, serial, log=print):
+    """Make sure frida-server answers; start the bundled one if it does not."""
+    if frida_running(adb, serial):
+        return 'running'
+    if not adb or not serial:
+        raise RuntimeError('frida-server is not running - press "Prepare device" in the Connection tab first')
+    log('frida-server is not running - starting the bundled one...')
+    prepare(adb, serial, log=log)
+    if not frida_running(adb, serial, timeout=10):
+        raise RuntimeError('frida-server started but does not answer; try Prepare device again')
+    return 'started'

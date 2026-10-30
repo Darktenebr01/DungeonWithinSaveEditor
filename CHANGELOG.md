@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2
+
+- Convert, Encrypt and plain-launch now check frida-server and start the bundled one automatically
+  when it is not answering, instead of failing with FridaServerNotRunningError.
+- Friendlier message when frida-server cannot be started.
+
 ## 1.3.1
 
 - The bundled adb is now always preferred, so a saved path from another PC (or a different adb

@@ -1498,6 +1498,8 @@ class App(tk.Tk):
                     else:
                         self.log('push failed: %s' % (err or out))
                 import dw_save_convert as conv
+                import dw_setup
+                dw_setup.ensure_frida(adb, serial_hint, log=self.log)
                 data = conv.convert_save(endpoint=endpoint,
                                          dec_rva=None,
                                          adb=adb, serial=serial_hint, log=self.log)
@@ -1572,7 +1574,10 @@ class App(tk.Tk):
                 out = os.path.join(self._cache_dir(), 'save_to_encrypt.json')
                 open(out, 'w', encoding='utf-8', newline='').write(text2)
                 import dw_save_encrypt as enc
-                res = enc.encrypt_plain(out, adb=android.find_adb(adb_hint or None), serial=serial_hint,
+                import dw_setup
+                adb_use = android.find_adb(adb_hint or None)
+                dw_setup.ensure_frida(adb_use, serial_hint, log=self.log)
+                res = enc.encrypt_plain(out, adb=adb_use, serial=serial_hint,
                                         endpoint=endpoint, log=self.log)
                 self.after(0, lambda: messagebox.showinfo(
                     'Encrypt', 'Encrypted save written to the device:\n%s\n(%d bytes, starts with %s)\n\n'
@@ -1661,9 +1666,12 @@ class App(tk.Tk):
                 adb = android.find_adb(adb_hint or None)
                 if not adb:
                     raise RuntimeError('adb not found')
-                serial = serial_hint
-                if serial not in android.devices(adb):
-                    serial = android.devices(adb)[0]
+                devs = android.devices(adb)
+                if not devs:
+                    raise RuntimeError('no adb device attached - start the emulator or connect the phone')
+                serial = serial_hint if serial_hint in devs else devs[0]
+                import dw_setup
+                dw_setup.ensure_frida(adb, serial, log=self.log)
                 if head_starts(adb, serial, dev, 'ES3E'):
                     # keep a copy of the encrypted save so normal play can be restored later
                     bak = os.path.join(self._cache_dir(), 'encrypted_backup.es3')
