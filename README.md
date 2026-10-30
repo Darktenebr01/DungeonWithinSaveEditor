@@ -31,6 +31,7 @@ are auto-detected; a networked Frida endpoint can be entered by hand.
 | Screen | What it does |
 | --- | --- |
 | **Resources** | Edit every `USER_DATA.storage` currency/resource, searchable |
+| **Facilities** | Facility type, durability (`bonus`), modification list (`prefixs`, e.g. `MOD_BTL_N_RGN`) and rank-up per placed facility |
 | **Units** | Level, essence/EXP, awake and training stage, base/grow stats, custom name, trait, variant (`Irochi`), skin, innate trait display, promotion (`RankUp`/`Transcend`), monster replacement |
 | **Abilities** | Equip `M1`/`S1`/`S2` parts from a 473-key catalog, clone a whole ability set from another monster |
 | **Dark Lord** | Unlock the six forms, set level/tokens, aspect stage, per-ability authority stage, and the Dark Lord skin |
@@ -45,6 +46,8 @@ JSON, **Encrypt save** turns it back into a normal `ES3E` save, **Validate**
 recomputes and checks all 413 DataVault checksums.
 
 ![Abilities](docs/abilities.png)
+
+![Facilities](docs/facilities.png)
 
 ## Install and run
 
@@ -104,6 +107,7 @@ tools/dw_names.py        capture monster names from the running game
 tools/dw_dump_parts.py   dump live ability/part tables
 tools/dw_capture_mawang.py  capture Dark Lord costume data
 tools/parts_catalog.json part key catalog
+tools/facility_catalog.json facility type catalog
 docs/SAVE_EDITOR.md      save format, encryption flow, portability notes
 tests/                   parser/checksum tests
 ```

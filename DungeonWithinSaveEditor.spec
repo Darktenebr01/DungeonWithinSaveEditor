@@ -4,7 +4,7 @@
 from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = collect_all('frida')
-datas = list(datas) + [('tools/parts_catalog.json', '.')]
+datas = list(datas) + [('tools/parts_catalog.json', '.'), ('tools/facility_catalog.json', '.')]
 
 a = Analysis(
     ['tools/dw_save_gui.py'],

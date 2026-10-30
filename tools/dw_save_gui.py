@@ -199,6 +199,7 @@ class App(tk.Tk):
 
         self.tab_conn = self._scroll_page('conn')
         self.tab_res = self._scroll_page('res')
+        self.tab_fac = self._scroll_page('fac')
         self.tab_units = self._scroll_page('units')
         self.tab_abil = self._scroll_page('abil')
         self.tab_dl = self._scroll_page('dl')
@@ -210,6 +211,7 @@ class App(tk.Tk):
 
         self._build_connection()
         self._build_resources()
+        self._build_facilities()
         self._build_units()
         self._build_abilities()
         self._build_darklord()
@@ -231,6 +233,8 @@ class App(tk.Tk):
             ('SAVE', [
                 ('Resources', self.tab_res, 'Resources',
                  'Currencies and resources stored in USER_DATA.storage.'),
+                ('Facilities', self.tab_fac, 'Facilities',
+                 'Placed facilities: type, durability, modifications and rank-up.'),
                 ('Units', self.tab_units, 'Units',
                  'Monster roster: progress, stats, traits and variants.'),
                 ('Abilities', self.tab_abil, 'Abilities',
@@ -342,6 +346,100 @@ class App(tk.Tk):
         self.res_all = tk.StringVar(value='99999')
         ttk.Entry(side, textvariable=self.res_all, width=26).pack(anchor='w', pady=2)
         ttk.Button(side, text='Set all', command=self.on_set_all_resources).pack(anchor='w', pady=4)
+
+    def _build_facilities(self):
+        f = self.tab_fac
+        cols = ('id', 'facility', 'durability', 'mods', 'rankup')
+        self.fac_tree = ttk.Treeview(f, columns=cols, show='headings', height=22)
+        for c, w in (('id', 50), ('facility', 230), ('durability', 90), ('mods', 220), ('rankup', 80)):
+            self.fac_tree.heading(c, text=c.capitalize())
+            self.fac_tree.column(c, width=w, anchor='w')
+        self.fac_tree.pack(fill='x', padx=(4, 4), pady=(4, 6))
+        self.fac_tree.bind('<<TreeviewSelect>>', lambda e: self._fac_selected())
+
+        card = ttk.LabelFrame(f, text='Facility', padding=10)
+        card.pack(fill='x', padx=4, pady=(0, 8))
+        self.fac_hdr = tk.StringVar(value='(select a facility)')
+        ttk.Label(card, textvariable=self.fac_hdr, style='CardHead.TLabel').pack(anchor='w')
+
+        row = ttk.Frame(card); row.pack(fill='x', pady=(8, 0))
+        ttk.Label(row, text='Facility type', style='CardMuted.TLabel', width=14).pack(side='left')
+        self.fac_key = tk.StringVar()
+        self.fac_key_combo = ttk.Combobox(row, textvariable=self.fac_key, width=42,
+                                          values=ed.facility_catalog())
+        self.fac_key_combo.pack(side='left', padx=6)
+
+        row2 = ttk.Frame(card); row2.pack(fill='x', pady=(6, 0))
+        ttk.Label(row2, text='Durability (bonus)', style='CardMuted.TLabel', width=14).pack(side='left')
+        self.fac_bonus = tk.StringVar()
+        ttk.Entry(row2, textvariable=self.fac_bonus, width=8).pack(side='left', padx=6)
+        ttk.Label(row2, text='RankUp', style='CardMuted.TLabel', width=8).pack(side='left', padx=(18, 0))
+        self.fac_rankup = tk.StringVar()
+        ttk.Entry(row2, textvariable=self.fac_rankup, width=8).pack(side='left', padx=6)
+
+        row3 = ttk.Frame(card); row3.pack(fill='x', pady=(6, 0))
+        ttk.Label(row3, text='Modifications', style='CardMuted.TLabel', width=14).pack(side='left')
+        self.fac_mods = tk.StringVar()
+        ttk.Entry(row3, textvariable=self.fac_mods, width=64).pack(side='left', padx=6)
+        ttk.Label(card, text='Comma-separated modification keys, e.g. MOD_BTL_N_RGN. '
+                             'The facility ability comes from the facility type; '
+                             'these are the extra modifications shown on the card.',
+                  style='CardMuted.TLabel').pack(anchor='w', pady=(6, 0))
+
+        row4 = ttk.Frame(card); row4.pack(fill='x', pady=(8, 0))
+        ttk.Button(row4, text='Apply changes', style='Accent.TButton',
+                   command=self.on_set_facility).pack(side='left')
+        ttk.Button(row4, text='Clear modifications',
+                   command=lambda: self.fac_mods.set('')).pack(side='left', padx=6)
+
+    def _refresh_facilities(self):
+        if not hasattr(self, 'fac_tree'):
+            return
+        self.fac_tree.delete(*self.fac_tree.get_children())
+        for i, fac in enumerate(ed.facility_spans(self.text) if self.text else []):
+            info = ed.get_facility(self.text, i)
+            mods = ','.join(info.get('prefixs') or [])
+            if self._match(info.get('facKey'), info.get('bonus'), mods, info.get('RankUp')):
+                self.fac_tree.insert('', 'end', values=(info.get('id'), info.get('facKey'),
+                                                        info.get('bonus'), mods, info.get('RankUp')))
+
+    def _fac_selected(self):
+        sel = self.fac_tree.selection()
+        if not sel:
+            return
+        row = sel[0]
+        idx = self.fac_tree.index(row)
+        self._fac_index = idx
+        info = ed.get_facility(self.text, idx)
+        self.fac_hdr.set('#%s  %s' % (info.get('id'), info.get('facKey')))
+        self.fac_key.set(info.get('facKey') or '')
+        self.fac_bonus.set(str(info.get('bonus') or 0))
+        self.fac_rankup.set(str(info.get('RankUp') or 0))
+        self.fac_mods.set(','.join(info.get('prefixs') or []))
+
+    def on_set_facility(self):
+        try:
+            idx = getattr(self, '_fac_index', None)
+            if idx is None:
+                return
+            if self.fac_key.get().strip():
+                self.text = ed.set_facility_field(self.text, idx, 'facKey',
+                                                  json.dumps(self.fac_key.get().strip()))
+            if self.fac_bonus.get().strip():
+                self.text = ed.set_facility_field(self.text, idx, 'bonus', str(int(self.fac_bonus.get())))
+            mods = [m.strip() for m in self.fac_mods.get().split(',') if m.strip()]
+            self.text = ed.set_facility_prefixes(self.text, idx, mods)
+            if self.fac_rankup.get().strip():
+                self.text = ed.set_facility_rankup(self.text, idx, int(self.fac_rankup.get()))
+            self._reload_from_text()
+            rows = self.fac_tree.get_children()
+            if idx < len(rows):
+                self.fac_tree.selection_set(rows[idx])
+                self._fac_selected()
+            self.log('facility %d updated (type=%s, durability=%s, mods=%s)' % (
+                idx, self.fac_key.get(), self.fac_bonus.get(), ','.join(mods)))
+        except Exception as e:
+            messagebox.showerror('Facility', str(e))
 
     def _build_units(self):
         f = self.tab_units
@@ -1057,6 +1155,7 @@ class App(tk.Tk):
         except Exception:
             self.innate_set = set()
         self._refresh_resources()
+        self._refresh_facilities()
         self._refresh_units()
         self._refresh_abilities()
         self._refresh_darklord()

@@ -792,6 +792,81 @@ def set_mw_vault(text, index, field, key, value):
     return recompute_checksums(text)
 
 
+def facility_spans(text):
+    ai, aj = array_span(text, 'USER_DATA.m_Facilities')
+    return list(split_children(text, (ai, aj), '['))
+
+
+def facility_element_spans(text):
+    return facility_spans(text)
+
+
+def get_facility(text, index):
+    s, e = facility_spans(text)[index]
+    out = {'id': None, 'facKey': None, 'bonus': 0, 'prefixs': [], 'RankUp': 0}
+    try:
+        out['id'] = int(get_token(text, 'id', s, e))
+    except Exception:
+        pass
+    try:
+        out['facKey'] = get_token(text, 'facKey', s, e).strip('"')
+    except Exception:
+        pass
+    try:
+        out['bonus'] = int(get_token(text, 'bonus', s, e))
+    except Exception:
+        pass
+    try:
+        pf = get_token(text, 'prefixs', s, e)
+        out['prefixs'] = [] if pf.strip() == 'null' else json.loads(pf)
+    except Exception:
+        pass
+    try:
+        vi = object_span(text, 'vault', s, e)
+        vi = object_span(text, 'values', vi[0], vi[1])
+        out['RankUp'] = int(get_token(text, 'RankUp', vi[0], vi[1]))
+    except Exception:
+        pass
+    return out
+
+
+def set_facility_field(text, index, field, literal):
+    """Set facKey / bonus on one facility (literal is already JSON text)."""
+    s, e = facility_spans(text)[index]
+    return set_token(text, field, literal, s, e)
+
+
+def set_facility_prefixes(text, index, keys):
+    """Replace the modification list (prefixs) of one facility."""
+    s, e = facility_spans(text)[index]
+    i, j = value_span(text, 'prefixs', s, e)
+    body = json.dumps(list(keys), ensure_ascii=False)
+    return text[:i] + ' ' + body + ' ' + text[j:]
+
+
+def set_facility_rankup(text, index, value):
+    s, e = facility_spans(text)[index]
+    vi = object_span(text, 'vault', s, e)
+    vi = object_span(text, 'values', vi[0], vi[1])
+    text = set_token(text, 'RankUp', str(int(value)), vi[0], vi[1])
+    return recompute_checksums(text)
+
+
+def facility_catalog():
+    candidates = [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'facility_catalog.json')]
+    base = getattr(sys, '_MEIPASS', None)
+    if base:
+        candidates.insert(0, os.path.join(base, 'facility_catalog.json'))
+    candidates.append(os.path.join(os.getcwd(), 'facility_catalog.json'))
+    for cat in candidates:
+        if os.path.exists(cat):
+            try:
+                return json.load(open(cat, encoding='utf-8'))
+            except Exception:
+                pass
+    return []
+
+
 def mw_spans(text):
     ai, aj = array_span(text, 'USER_DATA.mwExp')
     return list(split_children(text, (ai, aj), '['))
