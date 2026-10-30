@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1
+
+- The bundled adb is now always preferred, so a saved path from another PC (or a different adb
+  build with a stale server) no longer causes "device not found".
+- adb device listing starts the server and retries after a kill-server when the device is hidden.
+- Prepare device resolves the serial against the attached devices and gives a clear message when
+  nothing is connected.
+
 ## 1.3.0
 
 - Zero-install release: bundles `adb.exe` (platform-tools) and `frida-server` 17.24.3 for

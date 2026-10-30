@@ -296,7 +296,8 @@ class App(tk.Tk):
         card = ttk.LabelFrame(f, text='Connection (for convert / launch)', padding=10)
         card.pack(fill='x', padx=4, pady=(4, 8))
         self.endpoint = tk.StringVar(value=self.cfg['endpoint'])
-        self.adb = tk.StringVar(value=self.cfg['adb'])
+        bundled = android.bundled_adb() or ''
+        self.adb = tk.StringVar(value=bundled or self.cfg['adb'])
         self.serial = tk.StringVar(value=self.cfg['serial'])
         self.device_save = tk.StringVar(value=self.cfg['device_save'])
         row = ttk.Frame(card); row.pack(fill='x')
@@ -411,7 +412,14 @@ class App(tk.Tk):
             try:
                 import dw_setup
                 adb = android.find_adb(self.adb.get().strip() or None)
+                devs = android.devices(adb)
+                if not devs:
+                    raise RuntimeError('no adb device attached - start the emulator or connect the '
+                                       'phone with USB debugging')
                 serial = self.serial.get().strip()
+                if serial not in devs:
+                    serial = devs[0]
+                    self.after(0, lambda s=serial: self.serial.set(s))
                 self.log('preparing device: root check, frida-server push and start…')
                 res = dw_setup.prepare(adb, serial, log=self.log)
                 self.log('device ready: ABI %s, pid %s' % (res.get('abi'), res.get('pid')))
@@ -1346,7 +1354,7 @@ class App(tk.Tk):
                     raise RuntimeError('adb not found; install platform-tools or set the path')
                 devs = android.devices(adb)
                 if not devs:
-                    raise RuntimeError('no adb device attached')
+                    raise RuntimeError('no adb device attached - start the emulator (or connect the phone with USB debugging) and press Detect device again')
                 serial = serial_hint if serial_hint in devs else devs[0]
                 info = android.device_info(adb, serial)
                 path = android.find_save_path(adb, serial)
@@ -1374,7 +1382,7 @@ class App(tk.Tk):
             raise RuntimeError('adb not found (set the path in Connection settings)')
         devs = android.devices(adb)
         if not devs:
-            raise RuntimeError('no adb device attached')
+            raise RuntimeError('no adb device attached - start the emulator (or connect the phone with USB debugging) and press Detect device again')
         serial = serial_hint if serial_hint in devs else devs[0]
         path = android.find_save_path(adb, serial)
         if not path:
@@ -1520,7 +1528,7 @@ class App(tk.Tk):
             raise RuntimeError('adb not found (set the path in Connection settings)')
         devs = android.devices(adb)
         if not devs:
-            raise RuntimeError('no adb device attached')
+            raise RuntimeError('no adb device attached - start the emulator (or connect the phone with USB debugging) and press Detect device again')
         serial = self.serial.get().strip() or devs[0]
         return adb, (serial if serial in devs else devs[0])
 

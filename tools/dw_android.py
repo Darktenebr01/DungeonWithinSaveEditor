@@ -51,11 +51,13 @@ def bundled_adb():
 
 
 def find_adb(override=None):
-    if override and os.path.exists(override):
-        return override
+    # the bundled adb is always preferred: a previously saved path may belong to
+    # another machine or to a different adb build with its own stale server
     bundled = bundled_adb()
     if bundled:
         return bundled
+    if override and os.path.exists(override):
+        return override
     env = os.environ.get('ADB')
     if env and os.path.exists(env):
         return env
@@ -89,12 +91,23 @@ def adb(adb_path, serial, *args, timeout=30):
     return run(adb_path, cmd + list(args), timeout)
 
 
-def devices(adb_path):
-    rc, out, _ = run(adb_path, ['devices'], timeout=15)
+def devices(adb_path, restart=False):
+    """List attached devices; starts the adb server, and retries once after a restart."""
+    if restart:
+        run(adb_path, ['kill-server'], timeout=15)
+    run(adb_path, ['start-server'], timeout=20)
+    rc, out, err = run(adb_path, ['devices'], timeout=15)
+    if ('cannot connect' in (err or '').lower() or 'failed to start' in (err or '').lower()) and not restart:
+        return devices(adb_path, restart=True)
     result = []
-    for line in out.splitlines()[1:]:
+    for line in (out or '').splitlines()[1:]:
         if '\tdevice' in line:
             result.append(line.split('\t')[0])
+    if not result:
+        # a stale server from another adb build can hide the device; retry once
+        if not restart:
+            run(adb_path, ['kill-server'], timeout=15)
+            return devices(adb_path, restart=True)
     return result
 
 
