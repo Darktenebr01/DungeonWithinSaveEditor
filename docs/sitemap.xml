@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://darktenebr01.github.io/DungeonWithinSaveEditor/</loc>
     <lastmod>2026-10-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-    <image:image><image:loc>https://darktenebr01.github.io/DungeonWithinSaveEditor/units.png</image:loc></image:image>
-    <image:image><image:loc>https://darktenebr01.github.io/DungeonWithinSaveEditor/abilities.png</image:loc></image:image>
-    <image:image><image:loc>https://darktenebr01.github.io/DungeonWithinSaveEditor/facilities.png</image:loc></image:image>
-    <image:image><image:loc>https://darktenebr01.github.io/DungeonWithinSaveEditor/darklord.png</image:loc></image:image>
   </url>
 </urlset>
