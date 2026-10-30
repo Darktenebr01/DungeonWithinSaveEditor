@@ -55,6 +55,9 @@ A search box at the top filters every list. **Apply to file** writes the local J
 
 > Zero-install: the exe ships `adb.exe` and `frida-server` for x86_64/arm64. Enable root on the
 device, click **Prepare device**, and the editor pushes and starts everything itself.
+>
+> Root is mandatory: turn it on in the emulator settings (MuMu / LDPlayer / BlueStacks have a root
+> toggle) or use a rooted phone. The app tries `adb root` first, then `su`.
 
 **Download:** the standalone Windows build is in
 [Releases](https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest)
