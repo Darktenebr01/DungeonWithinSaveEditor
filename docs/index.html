@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dungeon Within Save Editor — edit resources, monsters, facilities, Dark Lord (Android)</title>
+<meta name="description" content="Free open-source save editor for Dungeon Within on Android. Change gold and resources, monster levels and abilities, facility modifiers, Dark Lord aspects and variants, then encrypt the save back with the game's own code. Works on emulators and rooted phones, any ABI.">
+<meta name="keywords" content="Dungeon Within save editor, Dungeon Within cheats, Dungeon Within mod, Dungeon Within save file, edit Dungeon Within save, Dungeon Within android, Dungeon Within gold, Dungeon Within resources, Dungeon Within monsters, Dungeon Within abilities, Dungeon Within Dark Lord, Dungeon Within facilities, frida save editor, il2cpp save editor">
+<link rel="canonical" href="https://darktenebr01.github.io/DungeonWithinSaveEditor/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Dungeon Within Save Editor">
+<meta property="og:title" content="Dungeon Within Save Editor — Android save editor">
+<meta property="og:description" content="Edit Dungeon Within saves: resources, monsters, abilities, facilities, Dark Lord, variants. Decrypts and re-encrypts through the game itself.">
+<meta property="og:url" content="https://darktenebr01.github.io/DungeonWithinSaveEditor/">
+<meta property="og:image" content="https://darktenebr01.github.io/DungeonWithinSaveEditor/units.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Dungeon Within Save Editor">
+<meta name="twitter:description" content="Open-source save editor for Dungeon Within (Android): resources, monsters, abilities, facilities, Dark Lord.">
+<meta name="twitter:image" content="https://darktenebr01.github.io/DungeonWithinSaveEditor/units.png">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #17171a; color: #e9e9ec;
+         font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  a { color: #f5a623; }
+  header { background: #1f1f22; border-bottom: 1px solid #34343a; padding: 18px 0; }
+  .wrap { width: min(1040px, 92vw); margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand span { color: #f5a623; }
+  .hero { padding: 56px 0 24px; }
+  h1 { font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px; }
+  h1 small { display: block; font-size: 15px; font-weight: 400; color: #9a9aa3; margin-top: 10px; }
+  .lead { font-size: 18px; color: #c9c9cf; max-width: 760px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 26px 0 10px; }
+  .btn { display: inline-block; padding: 12px 20px; border-radius: 8px; text-decoration: none;
+         font-weight: 600; border: 1px solid #34343a; background: #232326; color: #e9e9ec; }
+  .btn.primary { background: #f5a623; border-color: #f5a623; color: #161616; }
+  .shot { width: 100%; border: 1px solid #34343a; border-radius: 10px; margin: 28px 0 8px; }
+  h2 { font-size: 26px; margin: 46px 0 10px; }
+  h3 { font-size: 18px; margin: 26px 0 6px; }
+  p, li { color: #c9c9cf; }
+  ul { padding-left: 22px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 18px; }
+  .card { background: #232326; border: 1px solid #34343a; border-radius: 10px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; color: #fff; }
+  .card p { margin: 0; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #2c2c31; vertical-align: top; }
+  th { color: #9a9aa3; font-weight: 600; }
+  details { background: #232326; border: 1px solid #34343a; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
+  summary { cursor: pointer; font-weight: 600; color: #fff; }
+  footer { border-top: 1px solid #34343a; margin-top: 56px; padding: 24px 0 40px; color: #8a8a93; font-size: 14px; }
+  code { background: #101012; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap brand"><span>◆</span> Dungeon Within Save Editor</div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1>Dungeon Within Save Editor
+      <small>Open-source save editor for Dungeon Within on Android — emulator or rooted phone.</small>
+    </h1>
+    <p class="lead">Change gold and resources, monster levels, stats and abilities, facility modifiers,
+      Dark Lord aspects and variants, then encrypt the save back with the game's own code so it loads
+      like a normal save. No AES key is shipped, no offsets are hardcoded, and every edit is checksum-validated.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest">Download for Windows</a>
+      <a class="btn" href="https://github.com/Darktenebr01/DungeonWithinSaveEditor">Source on GitHub</a>
+    </div>
+    <img class="shot" src="units.png" alt="Dungeon Within Save Editor — Units tab showing monster levels, traits and variants">
+  </section>
+
+  <h2>What you can edit</h2>
+  <table>
+    <tr><th>Screen</th><th>What it does</th></tr>
+    <tr><td>Resources</td><td>Every currency and resource in the save (gold, essence, tokens), searchable.</td></tr>
+    <tr><td>Facilities</td><td>Facility type, ability modifiers (durability), modifications from a dropdown, rank-up.</td></tr>
+    <tr><td>Units</td><td>Monster level, essence, awake and training stage, base stats, custom name, trait, variant, skin, promotion, monster type.</td></tr>
+    <tr><td>Abilities</td><td>Equip M1/S1/S2 parts from a 473-key catalog, clone a whole ability set from another monster.</td></tr>
+    <tr><td>Dark Lord</td><td>Unlock the six forms, level, tokens, aspect stage, authority stage, skin.</td></tr>
+    <tr><td>Variants</td><td>Stored variant counts and variant research levels.</td></tr>
+    <tr><td>Collections</td><td>Collection counters used by the codex and costume unlocks.</td></tr>
+    <tr><td>Mementos</td><td>Memento buy counts.</td></tr>
+    <tr><td>Advanced</td><td>Read or write any JSON path in the save.</td></tr>
+  </table>
+
+  <h2>How it works</h2>
+  <p>Dungeon Within stores its save as an <code>ES3E</code> container encrypted by the game's own code.
+     The editor does not re-implement that crypto. It attaches with Frida, hooks
+     <code>ES3Saver.DecryptAndDecompress</code> to capture the plain JSON, edits that text while keeping
+     the ES3 dialect intact, then fills the game's decrypted buffer with your JSON and calls the real
+     <code>CompressAndEncrypt</code> on the game's thread. The two functions are found by name at runtime
+     and cached per game version and ABI, so there are no hardcoded offsets.</p>
+
+  <h2>Screens</h2>
+  <img class="shot" src="abilities.png" alt="Abilities tab: equipped parts per monster and cloning">
+  <img class="shot" src="facilities.png" alt="Facilities tab: type, ability modifiers, modifications and rank-up">
+  <img class="shot" src="darklord.png" alt="Dark Lord tab: forms, aspect stage, authority stage and skin">
+
+  <h2>FAQ</h2>
+  <details><summary>Is there a Dungeon Within save editor for Android?</summary>
+    <p>Yes. This editor runs on Windows and edits the Android save through adb and Frida; it works with
+       emulators (MuMu, LDPlayer, BlueStacks) and rooted phones, on any ABI.</p></details>
+  <details><summary>How do I edit my Dungeon Within save?</summary>
+    <p>Start the game once so the save exists, connect the device, press <em>Find save</em> to decrypt,
+       change what you want, then <em>Apply to file</em> and <em>Encrypt save</em>. The encrypted result is
+       verified by decrypting it again, and the previous save is restored if verification fails.</p></details>
+  <details><summary>Do I need the encryption key?</summary>
+    <p>No. The game itself decrypts and encrypts the file; the editor only drives it.</p></details>
+  <details><summary>Will it work after a game update?</summary>
+    <p>Usually yes. The two crypto functions are located by name and the offsets are cached per
+       <code>version:abi</code>; a new build only needs one calibration run.</p></details>
+  <details><summary>Is it safe for my save?</summary>
+    <p>It keeps backups, verifies the encrypted output against a marker value and rolls back on mismatch.
+       Keep your own copy anyway, and use it on single-player saves only.</p></details>
+
+  <h2>Requirements</h2>
+  <ul>
+    <li>Windows 10/11 (the CLI also runs anywhere Python does)</li>
+    <li>Python 3.10+ with <code>frida</code> — or the standalone release build</li>
+    <li><code>adb</code> from Android platform-tools</li>
+    <li>A rooted device/emulator with <code>frida-server</code> running</li>
+  </ul>
+</main>
+
+<footer>
+  <div class="wrap">
+    Fan tool. Dungeon Within belongs to its developers; this project is not affiliated with or endorsed by them.
+    Licensed MIT. <a href="https://github.com/Darktenebr01/DungeonWithinSaveEditor">GitHub</a> ·
+    <a href="https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest">Releases</a>
+  </div>
+</footer>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Dungeon Within Save Editor",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Windows 10, Windows 11",
+      "description": "Open-source save editor for Dungeon Within on Android. Edits resources, monsters, abilities, facilities, Dark Lord forms and variants, then re-encrypts the save with the game's own code.",
+      "url": "https://darktenebr01.github.io/DungeonWithinSaveEditor/",
+      "downloadUrl": "https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest",
+      "softwareVersion": "1.2.0",
+      "license": "https://github.com/Darktenebr01/DungeonWithinSaveEditor/blob/main/LICENSE",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "author": { "@type": "Person", "name": "Darktenebr01", "url": "https://github.com/Darktenebr01" },
+      "sameAs": "https://github.com/Darktenebr01/DungeonWithinSaveEditor"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Is there a Dungeon Within save editor for Android?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The editor runs on Windows and edits the Android save through adb and Frida. It works with emulators and rooted phones on any ABI." } },
+        { "@type": "Question", "name": "How do I edit my Dungeon Within save?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Connect the device, press Find save to decrypt, change values, then Apply to file and Encrypt save. The encrypted result is verified before it replaces the save." } },
+        { "@type": "Question", "name": "Do I need the encryption key?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. The game decrypts and encrypts the file itself; the editor only drives it." } },
+        { "@type": "Question", "name": "Will it work after a game update?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Usually yes. The crypto functions are found by name and offsets are cached per version and ABI." } }
+      ]
+    }
+  ]
+}
+</script>
+</body>
+</html>

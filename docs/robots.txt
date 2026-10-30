@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://darktenebr01.github.io/DungeonWithinSaveEditor/sitemap.xml
