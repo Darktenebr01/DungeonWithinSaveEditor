@@ -48,7 +48,10 @@ recomputes and checks all 413 DataVault checksums.
 
 ## Install and run
 
-Requirements: Windows 10/11, Python 3.10+, `adb` (Android platform-tools), and
+**Download:** the standalone build is in [Releases](https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest)
+(`DungeonWithinSaveEditor.exe`, no Python needed).
+
+From source — requirements: Windows 10/11, Python 3.10+, `adb` (Android platform-tools), and
 a rooted device/emulator with `frida-server` running.
 
 ```bat
