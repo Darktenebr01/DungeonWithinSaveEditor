@@ -34,7 +34,7 @@ SAVE_PATH_TEMPLATES = (
 )
 
 
-def bundled_adb():
+def _raw_bundled_adb():
     roots = []
     if getattr(sys, 'frozen', False):
         roots.append(os.path.dirname(sys.executable))
@@ -48,6 +48,36 @@ def bundled_adb():
         if os.path.exists(p):
             return p
     return None
+
+
+def bundled_adb():
+    """Bundled adb, copied once to a stable folder outside the one-file temp dir.
+
+    Running adb from a PyInstaller _MEIPASS directory that disappears on exit leaves a
+    background adb server whose executable vanished, which surfaces as a Windows
+    "adb.exe - Application Error" (0xc0000142). A persistent copy avoids that.
+    """
+    raw = _raw_bundled_adb()
+    if not raw:
+        return None
+    try:
+        target = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
+                              'DungeonWithinSaveEditor', 'platform-tools')
+        os.makedirs(target, exist_ok=True)
+        src_dir = os.path.dirname(raw)
+        for name in ('adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll'):
+            src = os.path.join(src_dir, name)
+            dst = os.path.join(target, name)
+            if not os.path.exists(src):
+                continue
+            if (not os.path.exists(dst)) or os.path.getsize(src) != os.path.getsize(dst):
+                shutil.copy2(src, dst)
+        adb = os.path.join(target, 'adb.exe')
+        if os.path.exists(adb):
+            return adb
+    except Exception:
+        pass
+    return raw
 
 
 def find_adb(override=None):

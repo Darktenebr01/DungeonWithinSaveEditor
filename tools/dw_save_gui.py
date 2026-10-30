@@ -94,6 +94,7 @@ class App(tk.Tk):
             self.names = dw_names.load_names()
         except Exception:
             self.names = {}
+        self._adb_on_path()
         self._build_ui()
         self.log('Ready. Open a plain save (.json) or convert an encrypted save.es3.')
         if len(sys.argv) <= 1:
@@ -123,6 +124,17 @@ class App(tk.Tk):
         self._page_of[inner] = outer
         self.nb.add(outer)
         return inner
+
+    def _adb_on_path(self):
+        """Put the bundled platform-tools on PATH so Frida spawns the same adb."""
+        adb = android.bundled_adb()
+        if not adb:
+            return
+        folder = os.path.dirname(adb)
+        parts = os.environ.get('PATH', '').split(os.pathsep)
+        if folder not in parts:
+            os.environ['PATH'] = folder + os.pathsep + os.environ.get('PATH', '')
+        os.environ.setdefault('ADB', adb)
 
     def _build_ui(self):
         self._titles = {}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.3
+
+- The bundled adb is copied once to `%LOCALAPPDATA%\DungeonWithinSaveEditor\platform-tools` and run
+  from there, instead of from the one-file temp folder. This removes the Windows
+  "adb.exe - Application Error (0xc0000142)" popup caused by a background adb server whose
+  executable had been deleted with the temp directory.
+- That folder is added to `PATH` (and `ADB`) at startup, so Frida spawns the same adb version.
+
 ## 1.3.2
 
 - Convert, Encrypt and plain-launch now check frida-server and start the bundled one automatically
