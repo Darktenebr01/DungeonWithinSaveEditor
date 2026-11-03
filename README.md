@@ -8,7 +8,7 @@ normal save. No AES key is shipped, no offsets are hardcoded, and every edit is 
 [![Release](https://img.shields.io/github/v/release/Darktenebr01/DungeonWithinSaveEditor?label=download&color=f5a623)](https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest)
 [![License](https://img.shields.io/github/license/Darktenebr01/DungeonWithinSaveEditor?color=f5a623)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-2a2a2e)](#install-and-run)
-[![Game](https://img.shields.io/badge/game-Dungeon%20Within%20v0.7.0-2a2a2e)](#how-it-works)
+[![Game](https://img.shields.io/badge/game-Dungeon%20Within%20v0.7.1-2a2a2e)](#how-it-works)
 
 ![Dungeon Within Save Editor — Units tab showing monster levels, traits and variants](docs/units.png)
 
@@ -35,7 +35,7 @@ be entered by hand.
 | **Resources** | Edit every `USER_DATA.storage` currency/resource (gold, essence, tokens), searchable |
 | **Facilities** | Facility type, ability modifiers (bonus index that drives durability), modifications picked from a dropdown or typed as keys (`prefixs`), rank-up |
 | **Units** | Level, essence/EXP, awake and training stage, base/grow stats, custom name, trait, variant (`Irochi`), skin, innate trait display, promotion (`RankUp`/`Transcend`), monster type replacement |
-| **Abilities** | Equip `M1`/`S1`/`S2` parts from a 473-key catalog, clone a whole ability set from another monster |
+| **Abilities** | Equip `M1`/`S1`/`S2` parts from a 473-key catalog, clone a whole ability set, and edit the **current run** units (`INGAME_DATA`) including their per-part **Ethereal** flag |
 | **Dark Lord** | Unlock the six forms, set level/tokens, aspect stage, per-ability authority stage, and the Dark Lord skin |
 | **Variants** | Stored variant counts (`NONE`/`BETRAY`) and variant research levels |
 | **Collections** | Collection counters used by codex and costume unlocks |
@@ -91,6 +91,7 @@ Every operation touches a real save, so the editor:
 
 - writes a `.bak` next to the save before **Apply to file**;
 - keeps a backup of the encrypted device save before **Launch game (plain mode)**;
+- keeps a `replace-backup-<date>.es3` copy of the device save before **Replace save with file…**;
 - verifies the encrypted result by decrypting it again and comparing a marker value (`GOLD` by
   default), and pushes the previous save back if it differs;
 - never leaves a plain JSON file on the device after encrypting, because a normal launch would
@@ -112,6 +113,24 @@ works with emulators (MuMu, LDPlayer, BlueStacks) and rooted phones, on any ABI.
 Start the game once so the save exists, connect the device, press **Find save** to decrypt,
 change values, then **Apply to file** and **Encrypt save**. The encrypted file is decrypted again
 to verify it, and the previous save is restored if verification fails.
+
+### Can I replace my save with a different one?
+
+Yes. In the **Connection** tab, **Replace save with file…** lets you pick any `save.es3` and pushes
+it over the device save (the previous one is backed up to
+`%LOCALAPPDATA%\DungeonWithinSaveEditor\replace-backup-<date>.es3` first, and the game is closed so
+it cannot overwrite the new file). If you pick a plain JSON save instead, it is loaded into the
+editor — press **Encrypt save** to write it to the device as a normal `ES3E` save.
+
+### How do I back up my current save?
+
+Use **Export save…** in the **Connection** tab and choose where to write the file. If a save is
+loaded it is copied as-is; if nothing is loaded, the save currently on the device is pulled and
+written, which backs up the game's own save without opening it first.
+
+Use **Export encrypted save…** to always pull the raw `ES3E` save straight from the device (the
+path is auto-detected when the field is empty) — handy when a plain JSON save is open in the editor
+and you still want a normal encrypted backup.
 
 ### Do I need the encryption key?
 

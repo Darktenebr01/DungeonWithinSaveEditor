@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.3.8
+
+- The **Abilities** tab has a new source switch: **Saved monsters** or **Current run (INGAME_DATA)**.
+  The second one lists the units of the run in progress.
+- Current-run parts show their role plus an **Ethereal** column. The game stores that flag as
+  `"Ethereal" : 1` on the part's own vault, so the editor can now toggle the flag on a selected part,
+  change a part key, add a part (optionally Ethereal) and remove one, with the per-part vault checksums
+  recomputed.
+- Adding/marking a second Ethereal part of the same family asks first: the game keeps one ethereal Main
+  and one ethereal Sub slot and removes the overflow on load.
+- The earlier experimental "ethereal slot ids" writer for saved monsters was removed: a save that really
+  has an ethereal part (checked against a live one) proves the flag lives on the run unit parts, not in
+  `USER_DATA.m_Units[].parts`.
+
+## 1.3.7
+
+- **Abilities** shows the role of each equipped slot (Main, Sub 1, Sub 2) and adds **Clear selected
+  slot** next to **Set selected slot**.
+
+## 1.3.6
+
+- New **Replace save with file…** action in the Connection tab: pick any `save.es3` from disk and
+  it is pushed over the device save, so a different save can be loaded without converting it
+  first. The current device save is pulled to the cache as `replace-backup-<date>.es3` before the
+  push, the game is closed so it cannot overwrite the new file, and the pushed file is verified to
+  still start with `ES3E`. Plain JSON files are loaded into the editor instead (with a hint to use
+  **Encrypt save**), because the normal game only reads the encrypted container.
+- New **Export save…** action in the Connection tab: save the current save to any file you choose.
+  If a save is loaded (plain JSON or encrypted `ES3E`), that file is copied; otherwise the save
+  currently on the device is pulled and written, so the game's own save can be backed up without
+  opening it first.
+- New **Export encrypted save…** action in the Connection tab: always pulls the raw `save.es3` from
+  the device (auto-detecting its path when needed) and writes it to a file you choose, even while a
+  plain JSON save is open in the editor.
+
 ## 1.3.5
 
 - ABI detection now retries across the adbd restart caused by `adb root`: it reads

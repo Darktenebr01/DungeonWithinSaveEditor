@@ -440,6 +440,223 @@ def copy_unit_parts(text, src_index, dst_index):
     return set_unit_parts(text, dst_index, unit_parts(text, src_index))
 
 
+# Slot ids used by the save for a unit's equipped parts. 0-2 are the normal Main/Sub/Sub
+# slots; a Transcend-1 monster gets an extra "ethereal" main and sub slot, which the game
+# stores as the next ids in the same parts list.
+ETHEREAL_MAIN_SLOT = 3
+ETHEREAL_SUB_SLOT = 4
+
+
+def unit_part_slots(text, index):
+    """Slot id -> part key for a unit (0/1/2 normal, 3/4 ethereal, others as stored)."""
+    out = {}
+    for p in unit_parts(text, index):
+        if isinstance(p, dict) and isinstance(p.get('id'), int) and isinstance(p.get('key'), str):
+            out[p['id']] = p['key']
+    return out
+
+
+def unit_part_slot(text, index, slot_id):
+    return unit_part_slots(text, index).get(slot_id)
+
+
+def set_unit_part_slot(text, index, slot_id, key):
+    """Set one slot id to `key`; an empty key removes the slot. Parts stay ordered by id."""
+    parts = [p for p in unit_parts(text, index) if isinstance(p, dict)]
+    if key:
+        for p in parts:
+            if p.get('id') == slot_id:
+                p['key'] = key
+                break
+        else:
+            parts.append({'id': slot_id, 'key': key})
+    else:
+        parts = [p for p in parts if p.get('id') != slot_id]
+    parts.sort(key=lambda p: p.get('id', 0))
+    return set_unit_parts(text, index, parts)
+
+
+# ------------------------- current dungeon run (INGAME_DATA) -----------------
+# The save also stores the *current run* under "INGAME_DATA.*".  Run units keep their
+# parts as objects with a per-part DataVault, and an ethereal part is a normal part
+# whose vault has "Ethereal" : 1 in its values (that is how the game marks the extra
+# Ethereal slots).  This is separate from the persistent USER_DATA.m_Units list.
+
+def ingame_units_span(text):
+    return array_span(text, 'INGAME_DATA.units')
+
+
+def ingame_unit_spans(text):
+    ai, aj = ingame_units_span(text)
+    return list(split_children(text, (ai, aj), '{'))
+
+
+def ingame_parts_span(text, unit_index):
+    us = ingame_unit_spans(text)[unit_index]
+    return array_span(text, 'parts', us[0], us[1])
+
+
+def _part_span(text, unit_index, part_index):
+    ps = ingame_parts_span(text, unit_index)
+    spans = list(split_children(text, ps, '{'))
+    if part_index < 0 or part_index >= len(spans):
+        raise IndexError('part %d out of range (%d parts)' % (part_index, len(spans)))
+    return spans[part_index]
+
+
+def ingame_unit_field(text, unit_index, key):
+    us = ingame_unit_spans(text)[unit_index]
+    try:
+        return get_token(text, key, us[0], us[1])
+    except KeyError:
+        return None
+
+
+def ingame_parts(text, unit_index):
+    """[{key, ethereal, memoryID}] for one run unit."""
+    out = []
+    for cs, ce in split_children(text, ingame_parts_span(text, unit_index), '{'):
+        try:
+            key = get_token(text, 'key', cs, ce).strip('"')
+        except KeyError:
+            key = None
+        try:
+            mid = int(get_token(text, 'memoryID', cs, ce))
+        except (KeyError, ValueError):
+            mid = None
+        try:
+            eth = int(get_token(text, 'Ethereal', cs, ce)) != 0
+        except (KeyError, ValueError):
+            eth = False
+        out.append({'key': key, 'ethereal': eth, 'memoryID': mid})
+    return out
+
+
+def ingame_units(text):
+    """[{index, unitIndex, status, parts}] for the current run (empty list if no run)."""
+    try:
+        spans = ingame_unit_spans(text)
+    except KeyError:
+        return []
+    out = []
+    for i, (cs, ce) in enumerate(spans):
+        try:
+            uid = get_token(text, 'unitIndex', cs, ce).strip('"')
+        except KeyError:
+            uid = '?'
+        try:
+            status = get_token(text, 'status', cs, ce).strip('"')
+        except KeyError:
+            status = ''
+        out.append({'index': i, 'unitIndex': uid, 'status': status,
+                    'parts': ingame_parts(text, i)})
+    return out
+
+
+def _array_close(text, span):
+    """Index of the closing bracket of the array at span (ends of value spans are unreliable)."""
+    i, j = span
+    depth = 0
+    in_str = False
+    esc = False
+    for k in range(i, j):
+        c = text[k]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == '\\':
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+            if depth == 0:
+                return k
+    return j - 1
+
+
+def _append_array_literal(text, span, literal):
+    """Append a JSON literal as the last element of the array at span."""
+    i, _ = span
+    close = _array_close(text, span)
+    k = close - 1
+    while k > i and text[k].isspace():
+        k -= 1
+    if text[k] == '[':
+        return text[:k + 1] + literal + text[k + 1:]
+    return text[:k + 1] + ', ' + literal + text[k + 1:]
+
+
+def _remove_array_element(text, span, index):
+    i, _ = span
+    close = _array_close(text, span)
+    spans = list(split_children(text, (i, close + 1), '{'))
+    cs, ce = spans[index]
+    start = cs
+    while start > i and text[start - 1].isspace():
+        start -= 1
+    end = ce
+    if start > i and text[start - 1] == ',':
+        start -= 1
+    else:
+        while end < close and text[end].isspace():
+            end += 1
+        if end < close and text[end] == ',':
+            end += 1
+    return text[:start] + text[end:]
+
+
+def _set_ethereal_marker(text, part_span, ethereal):
+    """Set/clear the "Ethereal" marker in a run part's vault."""
+    cs, ce = part_span
+    try:
+        vi, vj = object_span(text, 'vault', cs, ce)
+        try:
+            text = set_token(text, 'Ethereal', '1' if ethereal else '0', vi, vj)
+        except KeyError:
+            vals = object_span(text, 'values', vi, vj)
+            text = insert_token(text, 'Ethereal', '1' if ethereal else '0', vals[0], vals[1])
+    except KeyError:
+        literal = ('{"values" : {"Ethereal":%d}, "checksum" : 0, "checksumSeed" : 0, '
+                   '"isTampered" : false}' % (1 if ethereal else 0))
+        text = insert_token(text, 'vault', literal, cs, ce)
+    return text
+
+
+def set_ingame_part_ethereal(text, unit_index, part_index, ethereal):
+    part = _part_span(text, unit_index, part_index)
+    text = _set_ethereal_marker(text, part, bool(ethereal))
+    return recompute_checksums(text)
+
+
+def set_ingame_part_key(text, unit_index, part_index, key):
+    if not key:
+        raise ValueError('empty part key')
+    part = _part_span(text, unit_index, part_index)
+    text = set_token(text, 'key', '"%s"' % key, part[0], part[1])
+    return recompute_checksums(text)
+
+
+def add_ingame_part(text, unit_index, key, ethereal=False):
+    if not key:
+        raise ValueError('empty part key')
+    literal = ('{"memoryID" : -1, "key" : "%s", "vault" : {"values" : {"Ethereal":%d}, '
+               '"checksum" : 0, "checksumSeed" : 0, "isTampered" : false}}'
+               % (key, 1 if ethereal else 0))
+    text = _append_array_literal(text, ingame_parts_span(text, unit_index), literal)
+    return recompute_checksums(text)
+
+
+def remove_ingame_part(text, unit_index, part_index):
+    text = _remove_array_element(text, ingame_parts_span(text, unit_index), part_index)
+    return recompute_checksums(text)
+
+
 def part_catalog(obj):
     """All part keys: full vanilla catalog + partsLog + part-like AbilityLog entries."""
     out = set()

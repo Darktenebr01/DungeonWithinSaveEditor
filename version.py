@@ -1,3 +1,3 @@
 APP_NAME = 'Dungeon Within Save Editor'
-VERSION = '1.3.5'
-GAME = 'Dungeon Within v0.7.0 (b.209)'
+VERSION = '1.3.8'
+GAME = 'Dungeon Within v0.7.1 (b.212)'

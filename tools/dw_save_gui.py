@@ -333,9 +333,12 @@ class App(tk.Tk):
         ttk.Button(r1, text='Find save (auto)', command=self.on_auto_detect).pack(side='left', padx=6)
         ttk.Button(r1, text='Convert encrypted\u2026', command=self.on_convert).pack(side='left', padx=6)
         ttk.Button(r1, text='Backup', command=self.on_backup).pack(side='left', padx=6)
+        ttk.Button(r1, text='Export save\u2026', command=self.on_export_save).pack(side='left', padx=6)
+        ttk.Button(r1, text='Export encrypted save\u2026', command=self.on_export_encrypted).pack(side='left', padx=6)
         r2 = ttk.Frame(card2); r2.pack(fill='x', pady=(8, 0))
         ttk.Button(r2, text='Launch game (plain mode)', command=self.on_launch).pack(side='left')
         ttk.Button(r2, text='Restore encrypted save', command=self.on_restore_encrypted).pack(side='left', padx=6)
+        ttk.Button(r2, text='Replace save with file\u2026', command=self.on_replace_with_file).pack(side='left', padx=6)
         ttk.Label(card2, text='Prefer Encrypt save: it keeps the normal ES3E container.',
                   style='CardMuted.TLabel').pack(anchor='w', pady=(8, 0))
     def _build_resources(self):
@@ -601,52 +604,112 @@ class App(tk.Tk):
     def _build_abilities(self):
         f = self.tab_abil
         left = ttk.Frame(f); left.pack(side='left', fill='both', expand=True, padx=(0, 8), pady=6)
-        ttk.Label(left, text='Monster').pack(anchor='w')
-        self.abil_tree = ttk.Treeview(left, columns=('idx', 'unit'), show='headings', height=24)
+        ttk.Label(left, text='Source').pack(anchor='w')
+        src = ttk.Frame(left); src.pack(anchor='w', pady=(0, 6))
+        self.abil_mode = tk.StringVar(value='saved')
+        ttk.Radiobutton(src, text='Saved monsters', value='saved', variable=self.abil_mode,
+                        command=self.on_abil_mode).pack(side='left')
+        ttk.Radiobutton(src, text='Current run (INGAME_DATA)', value='run', variable=self.abil_mode,
+                        command=self.on_abil_mode).pack(side='left', padx=(8, 0))
+        self.abil_tree = ttk.Treeview(left, columns=('idx', 'unit'), show='headings', height=23)
         self.abil_tree.heading('idx', text='#')
         self.abil_tree.heading('unit', text='Unit')
         self.abil_tree.column('idx', width=45, anchor='w')
-        self.abil_tree.column('unit', width=160, anchor='w')
+        self.abil_tree.column('unit', width=200, anchor='w')
         self.abil_tree.pack(fill='both', expand=True)
         self.abil_tree.bind('<<TreeviewSelect>>', lambda e: self._abil_selected())
 
         right = ttk.Frame(f); right.pack(side='left', fill='y', pady=6)
         self.abil_hdr = tk.StringVar(value='(select a monster)')
         ttk.Label(right, textvariable=self.abil_hdr, font=('Segoe UI', 10, 'bold')).pack(anchor='w')
-        ttk.Label(right, text='Equipped parts (M1 / S1 / S2):').pack(anchor='w', pady=(8, 2))
-        self.abil_parts = ttk.Treeview(right, columns=('slot', 'key'), show='headings', height=4)
-        self.abil_parts.heading('slot', text='Slot')
+        ttk.Label(right, text='Equipped parts (run units also carry an Ethereal flag per part):').pack(
+            anchor='w', pady=(8, 2))
+        self.abil_parts = ttk.Treeview(right, columns=('slot', 'role', 'key', 'ethereal'),
+                                       show='headings', height=6)
+        self.abil_parts.heading('slot', text='#')
+        self.abil_parts.heading('role', text='Role')
         self.abil_parts.heading('key', text='Part key')
-        self.abil_parts.column('slot', width=50, anchor='w')
-        self.abil_parts.column('key', width=230, anchor='w')
+        self.abil_parts.heading('ethereal', text='Ethereal')
+        self.abil_parts.column('slot', width=36, anchor='w')
+        self.abil_parts.column('role', width=92, anchor='w')
+        self.abil_parts.column('key', width=190, anchor='w')
+        self.abil_parts.column('ethereal', width=70, anchor='w')
         self.abil_parts.pack(anchor='w')
         self.abil_parts.bind('<<TreeviewSelect>>', lambda e: self._part_selected())
 
-        ttk.Label(right, text='New key (type or pick):').pack(anchor='w', pady=(8, 2))
+        ttk.Label(right, text='Part key (type or pick):').pack(anchor='w', pady=(8, 2))
         self.abil_key = tk.StringVar()
         self.abil_combo = ttk.Combobox(right, textvariable=self.abil_key, width=30)
         self.abil_combo.pack(anchor='w')
-        ttk.Button(right, text='Set selected slot', command=self.on_set_part).pack(anchor='w', pady=4)
+        row_set = ttk.Frame(right)
+        row_set.pack(anchor='w', pady=4)
+        ttk.Button(row_set, text='Set selected part key', command=self.on_set_part).pack(side='left')
+        ttk.Button(row_set, text='Remove selected part', command=self.on_clear_part).pack(side='left', padx=6)
 
         ttk.Separator(right).pack(fill='x', pady=8)
-        ttk.Label(right, text='Clone abilities from:').pack(anchor='w')
+        self.run_frame = ttk.Frame(right)
+        self.run_frame.pack(anchor='w', fill='x')
+        ttk.Label(self.run_frame, text='Current run - Ethereal parts').pack(anchor='w')
+        ttk.Label(self.run_frame, foreground='#666',
+                  text='The game marks an ethereal part with "Ethereal" : 1 on that').pack(anchor='w')
+        ttk.Label(self.run_frame, foreground='#666',
+                  text='part vault (that is how the extra Main/Sub slots are stored).').pack(anchor='w')
+        self.eth_flag = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.run_frame, text='Part is Ethereal', variable=self.eth_flag).pack(
+            anchor='w', pady=(6, 2))
+        self.btn_toggle_eth = ttk.Button(self.run_frame, text='Apply to selected part',
+                                         command=self.on_toggle_ethereal)
+        self.btn_toggle_eth.pack(anchor='w', pady=2)
+        self.btn_add_part = ttk.Button(self.run_frame, text='Add part with this key',
+                                       command=self.on_add_part)
+        self.btn_add_part.pack(anchor='w', pady=2)
+        ttk.Label(self.run_frame, foreground='#666',
+                  text='Add copies the flag above and recomputes the vault checksums.').pack(anchor='w', pady=(2, 0))
+
+        ttk.Separator(right).pack(fill='x', pady=8)
+        ttk.Label(right, text='Clone abilities from (saved monsters):').pack(anchor='w')
         self.abil_src = tk.StringVar()
         self.abil_src_combo = ttk.Combobox(right, textvariable=self.abil_src, width=30, state='readonly')
         self.abil_src_combo.pack(anchor='w', pady=2)
         ttk.Button(right, text='Clone into this monster', command=self.on_clone_parts).pack(anchor='w', pady=4)
         ttk.Button(right, text='Dump part keys (game running)', command=self.on_dump_parts).pack(anchor='w', pady=4)
-        ttk.Label(right, text='B (innate) and the Epic Trait come from the monster type /\nmyth, not from the save; '
-                              'M1/S1/S2 are the equippable parts.', foreground='#666').pack(anchor='w', pady=(10, 0))
+        ttk.Label(right, foreground='#666',
+                  text='B (innate) and the Epic Trait come from the monster type / myth.').pack(anchor='w', pady=(10, 0))
+        ttk.Label(right, foreground='#666',
+                  text='Ethereal entries are normal part keys plus the Ethereal vault flag.').pack(anchor='w')
+
+    def on_abil_mode(self):
+        self._refresh_abilities()
+
+    def _abil_run_units(self):
+        if not self.text:
+            return []
+        try:
+            return ed.ingame_units(self.text)
+        except Exception:
+            return []
+
+    def _update_run_controls(self, enabled):
+        state = 'normal' if enabled else 'disabled'
+        for w in (getattr(self, 'btn_toggle_eth', None), getattr(self, 'btn_add_part', None)):
+            if w is not None:
+                w.configure(state=state)
 
     def _refresh_abilities(self):
         if not hasattr(self, 'abil_tree'):
             return
         self.abil_tree.delete(*self.abil_tree.get_children())
-        for i, u in enumerate(self.obj.get('USER_DATA.m_Units', {}).get('value') or []):
-            key = u.get('unitIdx')
-            name = u.get('customName') or getattr(self, 'names', {}).get(key) or key
-            if self._match(name, key):
-                self.abil_tree.insert('', 'end', values=(i, name))
+        mode = self.abil_mode.get()
+        if mode == 'run':
+            for u in self._abil_run_units():
+                suffix = '  [%s]' % u['status'] if u.get('status') and u['status'] != 'None' else ''
+                self.abil_tree.insert('', 'end', values=(u['index'], u['unitIndex'] + suffix))
+        else:
+            for i, u in enumerate(self.obj.get('USER_DATA.m_Units', {}).get('value') or []):
+                key = u.get('unitIdx')
+                name = u.get('customName') or getattr(self, 'names', {}).get(key) or key
+                if self._match(name, key):
+                    self.abil_tree.insert('', 'end', values=(i, name))
         self.abil_src_combo['values'] = ['#%d %s' % (i, u.get('unitIdx'))
                                          for i, u in enumerate(self.obj.get('USER_DATA.m_Units', {}).get('value') or [])]
         try:
@@ -654,6 +717,25 @@ class App(tk.Tk):
         except Exception:
             catalog = []
         self.abil_combo['values'] = catalog
+        self._update_run_controls(mode == 'run')
+
+    _SLOT_ROLES = {0: 'Main (M1)', 1: 'Sub (S1)', 2: 'Sub (S2)'}
+
+    def _slot_role(self, slot_id):
+        return self._SLOT_ROLES.get(slot_id, 'Slot %d' % slot_id)
+
+    @staticmethod
+    def _key_role(key):
+        if not key:
+            return ''
+        tail = key.rsplit('_', 1)[-1]
+        if tail == 'I1':
+            return 'Innate'
+        if tail == 'M1':
+            return 'Main'
+        if tail in ('S1', 'S2'):
+            return 'Sub ' + tail
+        return ''
 
     def _abil_selected(self):
         sel = self.abil_tree.selection()
@@ -661,24 +743,60 @@ class App(tk.Tk):
             return
         idx = int(self.abil_tree.item(sel[0], 'values')[0])
         self._abil_unit = idx
-        u = (self.obj.get('USER_DATA.m_Units', {}).get('value') or [])[idx]
-        self.abil_hdr.set('#%d  %s' % (idx, u.get('unitIdx')))
         self.abil_parts.delete(*self.abil_parts.get_children())
+        if self.abil_mode.get() == 'run':
+            units = self._abil_run_units()
+            if idx >= len(units):
+                return
+            u = units[idx]
+            self.abil_hdr.set('Run #%d  %s' % (idx, u['unitIndex']))
+            for i, p in enumerate(u['parts']):
+                self.abil_parts.insert('', 'end', values=(
+                    i, self._key_role(p['key']), p['key'], 'ethereal' if p['ethereal'] else ''))
+            self._update_run_controls(True)
+            return
+        self._update_run_controls(False)
+        try:
+            u = (self.obj.get('USER_DATA.m_Units', {}).get('value') or [])[idx]
+        except Exception:
+            return
+        vault = {}
+        try:
+            vault = ed.get_unit_vault(self.text, idx) or {}
+        except Exception:
+            pass
+        transcend = vault.get('TRANSCEND', 0)
+        self.abil_hdr.set('#%d  %s%s' % (idx, u.get('unitIdx'),
+                                         '  (Transcend %s)' % transcend if transcend else ''))
         for i, p in enumerate(u.get('parts') or []):
-            self.abil_parts.insert('', 'end', values=(i, p.get('key')))
+            try:
+                sid = int(p.get('id'))
+            except Exception:
+                sid = i
+            self.abil_parts.insert('', 'end',
+                                   values=(sid, self._slot_role(sid), p.get('key'), ''))
 
     def _part_selected(self):
         sel = self.abil_parts.selection()
         if sel:
-            slot, key = self.abil_parts.item(sel[0], 'values')
-            self._part_slot = int(slot)
-            self.abil_key.set(key)
+            vals = self.abil_parts.item(sel[0], 'values')
+            self._part_slot = int(vals[0])
+            self.abil_key.set(vals[2])
+            if len(vals) > 3:
+                self.eth_flag.set(bool(vals[3]))
 
     def _select_abil_unit(self, idx):
         for row in self.abil_tree.get_children():
             if int(self.abil_tree.item(row, 'values')[0]) == idx:
                 self.abil_tree.selection_set(row)
                 self._abil_selected()
+                return
+
+    def _select_abil_row(self, slot_id):
+        for row in self.abil_parts.get_children():
+            if int(self.abil_parts.item(row, 'values')[0]) == slot_id:
+                self.abil_parts.selection_set(row)
+                self._part_selected()
                 return
 
     def on_set_part(self):
@@ -688,21 +806,119 @@ class App(tk.Tk):
             key = self.abil_key.get().strip()
             if idx is None or slot is None or not key:
                 return
-            parts = ed.unit_parts(self.text, idx)
-            if slot >= len(parts):
-                raise IndexError('slot %d out of range' % slot)
-            parts[slot]['key'] = key
-            self.text = ed.set_unit_parts(self.text, idx, parts)
+            if self.abil_mode.get() == 'run':
+                self.text = ed.set_ingame_part_key(self.text, idx, slot, key)
+                self.log('run unit %d part %d = %s' % (idx, slot, key))
+            else:
+                slots = ed.unit_part_slots(self.text, idx)
+                if slot not in slots:
+                    raise IndexError('slot %d does not exist on this monster' % slot)
+                self.text = ed.set_unit_part_slot(self.text, idx, slot, key)
+                self.log('unit %d slot %d = %s' % (idx, slot, key))
             self._reload_from_text()
             self._select_abil_unit(idx)
-            self.abil_parts.selection_set(self.abil_parts.get_children()[slot])
-            self._part_selected()
-            self.log('unit %d slot %d = %s' % (idx, slot, key))
+            self._select_abil_row(slot)
         except Exception as e:
             messagebox.showerror('Set part', str(e))
 
+    def on_clear_part(self):
+        try:
+            idx = getattr(self, '_abil_unit', None)
+            slot = getattr(self, '_part_slot', None)
+            if idx is None or slot is None:
+                return
+            if self.abil_mode.get() == 'run':
+                if not messagebox.askyesno('Remove part', 'Remove part #%d from this run unit?' % slot):
+                    return
+                self.text = ed.remove_ingame_part(self.text, idx, slot)
+                self.log('run unit %d part %d removed' % (idx, slot))
+            else:
+                if slot in (0, 1, 2):
+                    if not messagebox.askyesno(
+                            'Clear part',
+                            'Remove the part from normal slot %d?' % slot):
+                        return
+                self.text = ed.set_unit_part_slot(self.text, idx, slot, '')
+                self.log('unit %d slot %d cleared' % (idx, slot))
+            self._reload_from_text()
+            self._select_abil_unit(idx)
+        except Exception as e:
+            messagebox.showerror('Clear part', str(e))
+
+    @staticmethod
+    def _part_family(key):
+        return 'M' if str(key or '').endswith('_M1') else 'S'
+
+    def _run_eth_counts(self, idx):
+        counts = {'M': 0, 'S': 0}
+        for p in ed.ingame_parts(self.text, idx):
+            if p.get('ethereal'):
+                counts[self._part_family(p.get('key'))] += 1
+        return counts
+
+    def _warn_eth_overflow(self, idx, key, extra=1):
+        """The game keeps ~1 ethereal slot per part family and removes the overflow."""
+        fam = self._part_family(key)
+        have = self._run_eth_counts(idx).get(fam, 0)
+        if have + extra > 1:
+            return messagebox.askyesno(
+                'Ethereal slot capacity',
+                'This run unit already has an ethereal %s part, and the game keeps only one '
+                'ethereal slot per family (it removes overflow ethereal parts on load).\n\n'
+                'Add/mark it anyway?' % ('Main' if fam == 'M' else 'Sub'))
+        return True
+
+    def on_toggle_ethereal(self):
+        try:
+            if self.abil_mode.get() != 'run':
+                messagebox.showinfo('Ethereal', 'Switch the source to "Current run (INGAME_DATA)" first.')
+                return
+            idx = getattr(self, '_abil_unit', None)
+            slot = getattr(self, '_part_slot', None)
+            if idx is None or slot is None:
+                messagebox.showinfo('Ethereal', 'Select a part first.')
+                return
+            flag = bool(self.eth_flag.get())
+            if flag:
+                parts = ed.ingame_parts(self.text, idx)
+                key = parts[slot]['key'] if slot < len(parts) else ''
+                if not self._warn_eth_overflow(idx, key):
+                    return
+            self.text = ed.set_ingame_part_ethereal(self.text, idx, slot, flag)
+            self._reload_from_text()
+            self._select_abil_unit(idx)
+            self._select_abil_row(slot)
+            self.log('run unit %d part %d ethereal=%s' % (idx, slot, flag))
+        except Exception as e:
+            messagebox.showerror('Ethereal', str(e))
+
+    def on_add_part(self):
+        try:
+            if self.abil_mode.get() != 'run':
+                messagebox.showinfo('Add part', 'Switch the source to "Current run (INGAME_DATA)" first.')
+                return
+            idx = getattr(self, '_abil_unit', None)
+            key = self.abil_key.get().strip()
+            if idx is None or not key:
+                messagebox.showinfo('Add part', 'Select a run unit and type a part key first.')
+                return
+            flag = bool(self.eth_flag.get())
+            if flag and not self._warn_eth_overflow(idx, key):
+                return
+            self.text = ed.add_ingame_part(self.text, idx, key, ethereal=flag)
+            self._reload_from_text()
+            self._select_abil_unit(idx)
+            parts = ed.ingame_parts(self.text, idx)
+            self._select_abil_row(len(parts) - 1)
+            self.log('run unit %d + part %s (ethereal=%s)' % (idx, key, flag))
+        except Exception as e:
+            messagebox.showerror('Add part', str(e))
+
     def on_clone_parts(self):
         try:
+            if self.abil_mode.get() == 'run':
+                messagebox.showinfo('Clone abilities', 'Cloning edits saved monsters; switch the source back.')
+                return
             idx = getattr(self, '_abil_unit', None)
             if idx is None:
                 return
@@ -1622,6 +1838,98 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror('Restore', str(e))
 
+    def on_replace_with_file(self):
+        """Replace the save on the device with a save file chosen from disk.
+
+        An ES3E file is pushed as-is (so the normal game can load it); a plain JSON save is
+        loaded into the editor instead, because the game only reads encrypted ES3E saves unless
+        it is started in plain mode.
+        """
+        path = filedialog.askopenfilename(
+            title='Replace device save with...',
+            filetypes=[('Save/JSON', '*.es3;*.json'), ('All files', '*.*')])
+        if not path:
+            return
+        try:
+            data = open(path, 'rb').read()
+        except Exception as e:
+            messagebox.showerror('Replace save', 'Cannot read the file:\n%s' % e)
+            return
+        if not data:
+            messagebox.showerror('Replace save', 'The chosen file is empty.')
+            return
+        encrypted = data[:4] == b'ES3E'
+        if not encrypted:
+            try:
+                json.loads(data.decode('utf-8-sig'))
+            except Exception as e:
+                messagebox.showerror('Replace save', 'Not an ES3E save and not valid JSON:\n%s' % e)
+                return
+            if not messagebox.askyesno(
+                    'Plain save',
+                    'This file is plain JSON, not an encrypted ES3E save.\n\n'
+                    'The normal game cannot read it directly. Load it into the editor now? '
+                    'You can then press "Encrypt save" to write it to the device as a normal save.'):
+                return
+            try:
+                self._load_plain(path)
+            except Exception as e:
+                messagebox.showerror('Replace save', 'Cannot load the JSON save:\n%s' % e)
+                return
+            messagebox.showinfo(
+                'Plain save',
+                'Loaded %s into the editor.\n\nPress "Encrypt save" to put it on the device as a normal save.'
+                % os.path.basename(path))
+            return
+
+        dev = self.device_save.get().strip()
+        if not dev:
+            messagebox.showerror('Replace save', 'Set the device save path first (Detect device / Find save).')
+            return
+        if not messagebox.askyesno(
+                'Replace device save',
+                'Replace the save on the device with this file?\n\n'
+                '  file:   %s\n  device: %s\n\n'
+                'The current device save is backed up first, and the game is closed before the push.'
+                % (path, dev)):
+            return
+
+        def work():
+            try:
+                adb, serial = self._device_serial()
+                rc, out, _ = android.adb(adb, serial, 'shell', 'pidof', android.PACKAGE, timeout=15)
+                if (out or '').strip():
+                    android.adb(adb, serial, 'shell', 'am', 'force-stop', android.PACKAGE, timeout=20)
+                    self.log('stopped the game before replacing the save')
+                backup = os.path.join(self._cache_dir(),
+                                      'replace-backup-%s.es3' % time.strftime('%Y%m%d-%H%M%S'))
+                rc, out, err = android.pull(adb, serial, dev, backup, timeout=120)
+                backup_ok = rc == 0 and os.path.exists(backup)
+                if backup_ok:
+                    self.log('previous save backed up to %s' % backup)
+                else:
+                    self.log('warning: could not back up the previous save: %s'
+                             % ((err or out or '').strip() or 'unknown error'))
+                rc, out, err = android.push(adb, serial, path, dev, timeout=120)
+                if rc != 0:
+                    raise RuntimeError('adb push failed: %s' % ((err or out or '').strip() or 'unknown error'))
+                if not head_starts(adb, serial, dev, 'ES3E'):
+                    raise RuntimeError('the save on the device does not look encrypted after the push; '
+                                       'the game will not load it')
+                self.log('replaced %s with %s (%d bytes)' % (dev, path, len(data)))
+                shown = backup if backup_ok else '(backup failed - the previous save was not copied)'
+                self.after(0, lambda: messagebox.showinfo(
+                    'Replace save',
+                    'Save replaced on the device:\n%s\n\nPrevious save backup:\n%s\n\n'
+                    'Use "Convert encrypted\u2026" if you want to open the new save in the editor.'
+                    % (dev, shown)))
+            except Exception as e:
+                self.log('replace save failed: %s' % e)
+                self.log(traceback.format_exc())
+                self.after(0, lambda: messagebox.showerror('Replace save', str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
     def on_apply(self):
         if self.text is None or not self.path:
             messagebox.showwarning('Apply', 'No save loaded.')
@@ -1662,6 +1970,105 @@ class App(tk.Tk):
         dst = self.path + '.%s.bak' % time.strftime('%Y%m%d-%H%M%S')
         shutil.copyfile(self.path, dst)
         self.log('backup: %s' % dst)
+
+    def on_export_save(self):
+        """Export the current save to a file chosen by the user.
+
+        The loaded save is copied when there is one (plain JSON or ES3E); otherwise the save
+        currently on the device is pulled, so the game's own save can be backed up without
+        opening it first.
+        """
+        src = self.path if (self.path and os.path.exists(self.path)) else None
+        if src:
+            ext = '.json' if src.lower().endswith('.json') else '.es3'
+            suggested = os.path.basename(src)
+        else:
+            dev = self.device_save.get().strip()
+            if not dev:
+                messagebox.showerror('Export save',
+                                     'No save is loaded and no device save path is set.\n'
+                                     'Open or convert a save first, or set the device save path.')
+                return
+            ext = '.es3'
+            suggested = android.SAVE_NAME
+        dst = filedialog.asksaveasfilename(title='Export save to...',
+                                           initialfile=suggested,
+                                           defaultextension=ext,
+                                           filetypes=[('Save file', '*' + ext), ('All files', '*.*')])
+        if not dst:
+            return
+        if src:
+            try:
+                shutil.copyfile(src, dst)
+                size = os.path.getsize(dst)
+            except Exception as e:
+                messagebox.showerror('Export save', 'Cannot write the file:\n%s' % e)
+                return
+            self.log('exported %s -> %s (%d bytes)' % (src, dst, size))
+            messagebox.showinfo('Export save', 'Save exported to:\n%s\n(%d bytes)' % (dst, size))
+            return
+
+        dev = self.device_save.get().strip()
+
+        def work():
+            try:
+                adb, serial = self._device_serial()
+                rc, out, err = android.pull(adb, serial, dev, dst, timeout=120)
+                if rc != 0 or not os.path.exists(dst):
+                    raise RuntimeError('adb pull failed: %s' % ((err or out or '').strip() or 'unknown error'))
+                size = os.path.getsize(dst)
+                self.log('exported device save %s -> %s (%d bytes)' % (dev, dst, size))
+                self.after(0, lambda: messagebox.showinfo(
+                    'Export save', 'Device save exported to:\n%s\n(%d bytes)' % (dst, size)))
+            except Exception as e:
+                self.log('export failed: %s' % e)
+                self.after(0, lambda: messagebox.showerror('Export save', str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_export_encrypted(self):
+        """Export the encrypted save currently stored on the device.
+
+        This always pulls the device save (not the loaded/save-editor file), so a normal ES3E
+        backup can be taken even while a plain JSON save is open in the editor.
+        """
+        dst = filedialog.asksaveasfilename(title='Export encrypted save to...',
+                                           initialfile=android.SAVE_NAME,
+                                           defaultextension='.es3',
+                                           filetypes=[('ES3 save', '*.es3'), ('All files', '*.*')])
+        if not dst:
+            return
+        dev = self.device_save.get().strip()
+
+        def work():
+            try:
+                adb, serial = self._device_serial()
+                remote = dev
+                if not remote:
+                    remote = android.find_save_path(adb, serial)
+                    if not remote:
+                        raise RuntimeError('no save.es3 found on the device (start the game once)')
+                    self.after(0, lambda r=remote: self.device_save.set(r))
+                rc, out, err = android.pull(adb, serial, remote, dst, timeout=120)
+                if rc != 0 or not os.path.exists(dst):
+                    raise RuntimeError('adb pull failed: %s'
+                                       % ((err or out or '').strip() or 'unknown error'))
+                size = os.path.getsize(dst)
+                with open(dst, 'rb') as fh:
+                    head = fh.read(4)
+                self.log('exported encrypted save %s -> %s (%d bytes)' % (remote, dst, size))
+                note = ''
+                if head != b'ES3E':
+                    note = ('\n\nWarning: the file does not start with ES3E - it may not be a '
+                            'normal encrypted save.')
+                self.after(0, lambda: messagebox.showinfo(
+                    'Export encrypted save',
+                    'Encrypted save exported to:\n%s\n(%d bytes)%s' % (dst, size, note)))
+            except Exception as e:
+                self.log('export encrypted save failed: %s' % e)
+                self.after(0, lambda: messagebox.showerror('Export encrypted save', str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def on_launch(self):
         text = self.text
