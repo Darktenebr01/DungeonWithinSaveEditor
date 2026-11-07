@@ -1,3 +1,5 @@
+brotli>=1.1
+cryptography>=41
 frida>=16
 pyinstaller>=6.0
 pytest>=8.0
