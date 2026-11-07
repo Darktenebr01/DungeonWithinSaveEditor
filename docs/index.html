@@ -66,8 +66,9 @@
       <small>Open-source save editor for Dungeon Within on Android — emulator or rooted phone, plus live Dark Lord stats and map jumps.</small>
     </h1>
     <p class="lead">Change gold and resources, monster levels, stats and abilities, facility modifiers,
-      Dark Lord aspects and variants, then encrypt the save back with the game's own code so it loads
-      like a normal save. No AES key is shipped, no offsets are hardcoded, and every edit is checksum-validated.</p>
+      Dark Lord aspects and variants — or work against the running game with live Dark Lord stats and a
+      map jump. Saves are decrypted locally and encrypted back through the game itself, so they load like
+      a normal save, and every edit is checksum-validated.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest">Download for Windows</a>
       <a class="btn" href="https://github.com/Darktenebr01/DungeonWithinSaveEditor">Source on GitHub</a>
@@ -102,12 +103,12 @@
   <p>Everything is process-local: stopping a hook or restarting the game restores the normal rules.</p>
 
   <h2>How it works</h2>
-  <p>Dungeon Within stores its save as an <code>ES3E</code> container encrypted by the game's own code.
-     The editor does not re-implement that crypto. It attaches with Frida, hooks
-     <code>ES3Saver.DecryptAndDecompress</code> to capture the plain JSON, edits that text while keeping
-     the ES3 dialect intact, then fills the game's decrypted buffer with your JSON and calls the real
-     <code>CompressAndEncrypt</code> on the game's thread. The two functions are found by name at runtime
-     and cached per game version and ABI, so there are no hardcoded offsets.</p>
+  <p>Dungeon Within stores its save as an <code>ES3E</code> container. Reading is local: the editor
+     decrypts the container with the constants compiled into the game's <code>ES3Saver</code>, which is
+     what the live page uses to poll the device. Writing goes through the game itself — the editor fills
+     the game's decrypted buffer with your JSON and calls the real <code>CompressAndEncrypt</code> on the
+     game's thread. The crypto functions are found by name at runtime and cached per game version and ABI,
+     so there are no hardcoded offsets.</p>
 
   <h2>Screens</h2>
   <img class="shot" src="abilities.png" alt="Abilities tab: equipped parts per monster and cloning">
