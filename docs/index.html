@@ -124,7 +124,7 @@
        change what you want, then <em>Apply to file</em> and <em>Encrypt save</em>. The encrypted result is
        verified by decrypting it again, and the previous save is restored if verification fails.</p></details>
   <details><summary>Do I need the encryption key?</summary>
-    <p>No. The game itself decrypts and encrypts the file; the editor only drives it.</p></details>
+    <p>No. You never handle keys: reads use the constants recovered from the game (so a pull needs no game launch), and writes are performed by the game itself.</p></details>
   <details><summary>Will it work after a game update?</summary>
     <p>Usually yes. The two crypto functions are located by name and the offsets are cached per
        <code>version:abi</code>; a new build only needs one calibration run.</p></details>
@@ -180,7 +180,7 @@
         { "@type": "Question", "name": "How do I edit my Dungeon Within save?",
           "acceptedAnswer": { "@type": "Answer", "text": "Connect the device, press Find save to decrypt, change values, then Apply to file and Encrypt save. The encrypted result is verified before it replaces the save." } },
         { "@type": "Question", "name": "Do I need the encryption key?",
-          "acceptedAnswer": { "@type": "Answer", "text": "No. The game decrypts and encrypts the file itself; the editor only drives it." } },
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Reads use the constants recovered from the game, so a pull needs no game launch; writes are performed by the game itself." } },
         { "@type": "Question", "name": "Can I edit the Dark Lord's live stats?",
           "acceptedAnswer": { "@type": "Answer", "text": "Yes. Start live stats hooks the running game and overrides the Dark Lord base stats for units and runs created after the hook starts; the save file is not modified." } },
         { "@type": "Question", "name": "Can I skip the run map or jump to the boss?",

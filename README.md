@@ -160,7 +160,7 @@ and you still want a normal encrypted backup.
 
 ### Do I need the encryption key?
 
-No. The game decrypts and encrypts the file itself; the editor only drives it.
+No. You never handle keys: reads use the constants recovered from the game (so a pull needs no game launch), and writes are performed by the game itself.
 
 ### Does it work after a game update?
 
