@@ -175,3 +175,132 @@ class RunUnitEtherealTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+SAMPLE_MW = """{
+	"USER_DATA.mwExp" : {
+		"__type" : "System.Object",
+		"value" : [
+			{
+				"__type" : "GameDefinitions.OutExp+MWData,Assembly-CSharp",
+				"UpgAspe" : { "values" : {"Basic":1}, "checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+				"lcUpg" : { "values" : {"LC_BST001_B01":1,"LC_BST001_S01":2,"LC_UDD001_B01":0},
+					"checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+				"storage" : { "values" : {"LEVEL":1,"UNLOCKED":0,"TOKEN":0},
+					"checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+				"key" : "BST001",
+				"level" : 1,
+				"clearStage" : [1,2,3]
+			},
+			{
+				"__type" : "GameDefinitions.OutExp+MWData,Assembly-CSharp",
+				"UpgAspe" : { "values" : {"Basic":2}, "checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+				"lcUpg" : { "values" : {"LC_UDD001_B01":2}, "checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+				"storage" : { "values" : {"LEVEL":2,"UNLOCKED":0,"TOKEN":0},
+					"checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+				"key" : "UDD001",
+				"level" : 2,
+				"clearStage" : [1]
+			}
+		]
+	}
+}"""
+
+SAMPLE_MAWANG = """{
+	"INGAME_DATA.playerMawang" : {
+		"__type" : "IngameDataMgr.PlayerMawangData,Assembly-CSharp",
+		"unitIndex" : "BST001",
+		"baseEft" : {"MaxHP":0.5,"Strength":0.25,"Dexterity":0.1,"Constitution":0.2,"INT":0.3,"WIS":0.4,"CHA":0.6},
+		"growEft" : {"MaxHP":0.1,"Strength":0.2},
+		"awakeEft" : { "values" : {"STR":1,"DEX":0,"CON":0,"INT":0,"WIS":0,"CHA":0,"HP":0,"MainStat":0},
+			"checksum" : 0, "checksumSeed" : 0, "isTampered" : false },
+		"parts" : [ { "key" : "BST001_B01" } ]
+	}
+}"""
+
+
+def _bad_checksums(text):
+    bad = 0
+    for _, vault in ed.walk_vaults(ed.parse(text)):
+        vals = vault.get('values') or {}
+        if any(not isinstance(v, int) for v in vals.values()):
+            continue
+        x = 0
+        for v in vals.values():
+            x ^= int(v) & 0xFFFFFFFF
+        want = ed.to_signed32((vault.get('checksumSeed', 0) ^ x) & 0xFFFFFFFF)
+        if vault.get('checksum') != want:
+            bad += 1
+    return bad
+
+
+class DarkLordStatTests(unittest.TestCase):
+    def test_reads_level(self):
+        self.assertEqual(ed.get_mw_level(SAMPLE_MW, 0), 1)
+        self.assertEqual(ed.get_mw_level(SAMPLE_MW, 1), 2)
+
+    def test_set_level(self):
+        text = ed.set_mw_level(SAMPLE_MW, 0, 5)
+        self.assertEqual(ed.get_mw_level(text, 0), 5)
+        self.assertEqual(_bad_checksums(text), 0)
+
+    def test_max_form_scales_only_its_stages(self):
+        text = ed.max_mw_form(SAMPLE_MW, 0, 3)
+        self.assertEqual(ed.get_mw_level(text, 0), 3)
+        self.assertEqual(ed.get_mw_vault(text, 0, 'UpgAspe')['Basic'], 3)
+        lc = ed.get_mw_vault(text, 0, 'lcUpg')
+        self.assertEqual(lc['LC_BST001_B01'], 3)
+        self.assertEqual(lc['LC_BST001_S01'], 3)
+        self.assertEqual(lc['LC_UDD001_B01'], 0)
+        self.assertEqual(ed.get_mw_level(text, 1), 2)
+        self.assertEqual(_bad_checksums(text), 0)
+
+    def test_max_all_forms(self):
+        text = ed.max_all_mw_forms(SAMPLE_MW, 4)
+        self.assertEqual(ed.get_mw_level(text, 0), 4)
+        self.assertEqual(ed.get_mw_level(text, 1), 4)
+        self.assertEqual(ed.get_mw_vault(text, 1, 'lcUpg')['LC_UDD001_B01'], 4)
+        self.assertEqual(_bad_checksums(text), 0)
+
+    def test_run_mawang_stats_roundtrip(self):
+        st = ed.ingame_mawang_stats(SAMPLE_MAWANG)
+        self.assertAlmostEqual(st['baseEft']['Strength'], 0.25)
+        self.assertEqual(st['awakeEft']['STR'], 1)
+        text = ed.set_ingame_mawang_stat(SAMPLE_MAWANG, 'baseEft', 'Strength', 9.5)
+        st = ed.ingame_mawang_stats(text)
+        self.assertAlmostEqual(st['baseEft']['Strength'], 9.5)
+        text = ed.set_ingame_mawang_stat(text, 'awakeEft', 'STR', 7)
+        self.assertEqual(ed.ingame_mawang_stats(text)['awakeEft']['STR'], 7)
+        self.assertEqual(_bad_checksums(text), 0)
+
+    def test_run_mawang_missing(self):
+        self.assertEqual(ed.ingame_mawang_stats(SAMPLE), {})
+        with self.assertRaises(KeyError):
+            ed.set_ingame_mawang_stat(SAMPLE, 'baseEft', 'STR', 1)
+
+import base64 as _b64
+import hashlib as _hashlib
+
+import dw_es3 as _es3
+
+_ORACLE_B64 = (
+    'RVMzRegybNs1mATb5fAjLBRFcvg7o5RKL2iXe43an4EiE6LM1FKhjqhhjMI542s7197kH2o5TNW520Sw20bNT+nQosfodSw/'
+    'foKru24UPHzax4pdzxZpLkldZkB1UA0wr6bUGQIMDsl6BFiwWW0Yx6992ErWR/JLKAgYMABDYQM0f5F4G03ikWV4XuIGDtUTcvV5'
+    'r0Zl2c/AxjEgZiBwe9gYb7E=')
+
+
+class Es3ContainerTests(unittest.TestCase):
+    def test_roundtrip(self):
+        self.assertEqual(_es3.decrypt(_es3.encrypt(b'{"a":1}')), b'{"a":1}')
+
+    def test_decrypts_game_container(self):
+        plain = _es3.decrypt(_b64.b64decode(_ORACLE_B64))
+        self.assertEqual(len(plain), 194371)
+        self.assertEqual(_hashlib.sha256(plain).hexdigest(),
+                         'a62103a4d71ccbd91259ac6ae73b6fbd478913484b7dcc7fb2279e82694b2ce0')
+
+    def test_rejects_tampered_container(self):
+        data = bytearray(_b64.b64decode(_ORACLE_B64))
+        data[-1] ^= 1
+        with self.assertRaises(_es3.ContainerError):
+            _es3.decrypt(bytes(data))

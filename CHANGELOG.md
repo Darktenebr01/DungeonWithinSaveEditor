@@ -1,5 +1,94 @@
 # Changelog
 
+## 1.4.7
+
+- Live map can now jump the run's day cursor: `dw_live_map.py --turn N` hooks
+  `NodesUIContents.LoadDayTasks(StageData)` on the main thread and calls
+  `StageData.set_dayNodeCursor(N)` before the map builds, so the node tree reloads at the requested turn.
+  Verified on 0.7.1: from Stage 1-10 the next map load moved to the boss/end-zone emblem.
+- The ACTIVE GAME -> Live Dark Lord page has a **Jump to turn** field (default 15) with **Start + jump**,
+  which starts the map hook with that turn.
+
+## 1.4.6
+
+- Live map: removed the experimental day-skip code. `IngameMgrAdmin.NextDay` only advances the run's day
+  cursor when it runs on Unity's main thread; calling it from Frida's thread faults, and every main-thread
+  trigger tried so far (`NodeContainer.Update`, `UnityEngine.Time.get_deltaTime`) could not be resolved in
+  this build. The map hook therefore stays selection-only: it makes rendered nodes selectable, but it does
+  not move the day cursor, so completing a node the cursor did not reach still snaps the map back.
+
+## 1.4.5
+
+- The ACTIVE GAME -> Live Dark Lord page now has a **Live map** card: Start/Stop for the node-selectable
+  hook (`dw_live_map.py`), with a status pill (`resolving i/n`, `active - reopen the run map`, `stopped`).
+  It runs as a separate no-window process, logs into the Log tab, and is stopped when the window closes.
+
+## 1.4.4
+
+- New `tools/dw_live_map.py`: while attached to the running game it forces every rendered run-map
+  node to be clickable (`NodeContainer.ApplyVisuals`) and replaces the click validator
+  (`NodesUIContents.OnClickDayTaskSpot`) with a direct `_ConfirmDayNode(pin)` call. RVAs are resolved
+  by managed name and cached per build; stopping the tool restores the normal map rules.
+
+## 1.4.3
+
+- Live-stat start is much faster:
+  - cold start resolves the 8 base getters in one metadata pass per name group (Base, IsMawang) instead of one
+    full 4 GB scan per method: ~125 s -> ~15 s.
+  - the RVA cache is actually used now, and stores module-relative RVAs plus the `libil2cpp.so` size, so a
+    later start on the same build installs the hooks in about a second and a different build is re-resolved.
+  - growth getters are only resolved when `--growth` is passed.
+  - a resolution error now aborts immediately instead of waiting out the 300 s deadline.
+- GUI: the live-stat note and status text show the new timings.
+
+## 1.4.2
+
+- No more console windows while the editor runs: every adb/frida helper subprocess (device pull, push,
+  convert, plain-mode launch, live-stat hook) is started with `CREATE_NO_WINDOW`, so a windowed
+  (`pythonw`, `run.bat`) editor no longer flashes a terminal on each poll or action.
+- Push failures now include the adb return code and output instead of an empty `push failed:` line, and a
+  failed pre-convert push aborts instead of continuing into the game spawn.
+- The live-stat hook process is started with the same no-window flag.
+
+## 1.4.1
+
+- Live Dark Lord page fixes from a live session:
+  - the Frida log no longer prints one line per memory-scan step; it shows `resolving i/n` progress,
+    the hook result and errors only.
+  - `Send to editor` no longer re-triggers itself; it runs one pull and switches the buffer when it lands.
+  - Auto-follow now tracks where the buffer came from: a save you opened or converted from disk is never
+    replaced by the game's save, and a buffer you edited is kept with a one-time log notice.
+  - `adb pull` retries once after `adb connect` for network devices and reports the adb return code and
+    output instead of "unknown error".
+  - Closing the window terminates the live-stat hook process.
+
+## 1.4.0
+
+- The UI is split into **ACTIVE GAME** and **SAVE FILE** groups. Active Game holds the device/Frida
+  connection and a new **Live Dark Lord** page; every save-editing tab (Resources, Units, Abilities,
+  Dark Lord, Variants, Collections, Mementos, Advanced) stays under SAVE FILE.
+- **Live Dark Lord** always reads the running game: it pulls `save.es3` from the device on a 3 s timer,
+  decrypts it with the ES3E container module (`tools/dw_es3.py`) and shows device, game build, process id,
+  container/plain sizes, SHA and pull time. "Send to editor" loads that snapshot; auto-follow only replaces
+  the buffer while it still matches the last pull, so local edits are never silently discarded.
+- The page also owns the Frida live-stat hook (Start/Stop, HP/STR/DEX/CON/INT/WIS/CHA fields), replacing the
+  save-only "current run" block that used to error when the save had no run.
+- New modules `tools/dw_es3.py` (ES3E decrypt/encrypt, verified against a game-produced container) and
+  `tools/dw_live.py` (device pull + decrypt). `requirements.txt` now lists `brotli` and `cryptography`.
+
+## 1.3.9
+
+- Dark Lord stats: the **Dark Lord** tab now edits the persistent stat drivers directly - essence level,
+  the form's `Basic` aspect and its own `LC_*` authority stages - with **Max form stats** / **Max all forms**
+  shortcuts (values beyond 5 are written as-is for experimentation) and checksum recomputation.
+- New tool `tools/dw_live_stats.py`: a spawn/attach Frida hook that overrides `UnitTable` base stats for
+  Dark Lord ("Mawang") tables while the game runs. It resolves `get_IsMawang` and `Get*Base`/`Get*Growth`
+  by managed name (chunked scans, no hardcoded offsets), caches the RVAs per build, and only rewrites the
+  return value when the table reports itself as Mawang. Verified in a fresh run: the Dark Lord's basic
+  attack went from 8-26 to 3008 damage with `--str 9999`.
+- Current-run `INGAME_DATA.playerMawang` stat editing (`baseEft` / `growEft` / `awakeEft`) when a save
+  contains an active run.
+
 ## 1.3.8
 
 - The **Abilities** tab has a new source switch: **Saved monsters** or **Current run (INGAME_DATA)**.

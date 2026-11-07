@@ -12,7 +12,9 @@ Build:  pyinstaller --onefile --windowed --name DungeonWithinSaveEditor tools/dw
 
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -28,6 +30,7 @@ if HERE not in sys.path:
 import dw_save_editor as ed
 import dw_theme as theme  # noqa: E402
 import dw_android as android  # noqa: E402
+import dw_live  # noqa: E402
 
 CONFIG_PATH = os.path.join(os.path.expanduser('~'), '.dw_save_editor.json')
 
@@ -210,6 +213,7 @@ class App(tk.Tk):
         self.nb.pack(fill='both', expand=True)
 
         self.tab_conn = self._scroll_page('conn')
+        self.tab_live = self._scroll_page('live')
         self.tab_res = self._scroll_page('res')
         self.tab_fac = self._scroll_page('fac')
         self.tab_units = self._scroll_page('units')
@@ -222,6 +226,7 @@ class App(tk.Tk):
         self.tab_log = self._scroll_page('log')
 
         self._build_connection()
+        self._build_live()
         self._build_resources()
         self._build_facilities()
         self._build_units()
@@ -236,13 +241,24 @@ class App(tk.Tk):
 
         self.nb.select(self.tab_res)
 
+        self._live_busy = False
+        self._live_last_text = None
+        self._live_last_sha = None
+        self._live_info = None
+        self._live_proc = None
+        self._map_proc = None
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
+        self.after(800, self._live_tick)
+
     def _build_nav(self):
         specs = [
-            ('SESSION', [
+            ('ACTIVE GAME', [
                 ('Connection', self.tab_conn, 'Connection',
                  'Device, adb and Frida settings.'),
+                ('Live Dark Lord', self.tab_live, 'Live Dark Lord',
+                 'Pulls the running game\'s save and applies live Dark Lord stat hooks.'),
             ]),
-            ('SAVE', [
+            ('SAVE FILE', [
                 ('Resources', self.tab_res, 'Resources',
                  'Currencies and resources stored in USER_DATA.storage.'),
                 ('Facilities', self.tab_fac, 'Facilities',
@@ -251,10 +267,8 @@ class App(tk.Tk):
                  'Monster roster: progress, stats, traits and variants.'),
                 ('Abilities', self.tab_abil, 'Abilities',
                  'Equipped parts per monster, and cloning between monsters.'),
-            ]),
-            ('DARK LORD', [
                 ('Dark Lord', self.tab_dl, 'Dark Lord',
-                 'The six forms, aspect and authority stages, skin.'),
+                 'The six forms, aspect and authority stages, skin (save data).'),
                 ('Variants', self.tab_var, 'Variants',
                  'Stored variant counts and variant research levels.'),
                 ('Collections', self.tab_col, 'Collections',
@@ -341,6 +355,328 @@ class App(tk.Tk):
         ttk.Button(r2, text='Replace save with file\u2026', command=self.on_replace_with_file).pack(side='left', padx=6)
         ttk.Label(card2, text='Prefer Encrypt save: it keeps the normal ES3E container.',
                   style='CardMuted.TLabel').pack(anchor='w', pady=(8, 0))
+
+    # --------------------------------------------------------- active game
+    def _build_live(self):
+        f = self.tab_live
+        card = ttk.LabelFrame(f, text='Running game - always read from the device', padding=10)
+        card.pack(fill='x', padx=4, pady=(4, 8))
+        self.live_dev = tk.StringVar(value='-')
+        self.live_ver = tk.StringVar(value='-')
+        self.live_pid = tk.StringVar(value='-')
+        self.live_file = tk.StringVar(value='-')
+        self.live_time = tk.StringVar(value='not pulled yet')
+        self.live_sha = tk.StringVar(value='-')
+        for label, var in (('Device', self.live_dev), ('Game version', self.live_ver),
+                           ('Game process', self.live_pid), ('Device save', self.live_file),
+                           ('Plain save', self.live_sha), ('Last pull', self.live_time)):
+            row = ttk.Frame(card); row.pack(fill='x', pady=1)
+            ttk.Label(row, text=label, width=14, style='CardMuted.TLabel').pack(side='left')
+            ttk.Label(row, textvariable=var).pack(side='left')
+        row = ttk.Frame(card); row.pack(fill='x', pady=(8, 0))
+        self.live_auto = tk.BooleanVar(value=True)
+        self.live_follow = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row, text='Auto-refresh every 3 s', variable=self.live_auto,
+                        command=self._live_toggle).pack(side='left')
+        ttk.Checkbutton(row, text='Load into the editor when the game saves',
+                        variable=self.live_follow).pack(side='left', padx=12)
+        ttk.Button(row, text='Pull now', style='Accent.TButton',
+                   command=self.on_live_pull).pack(side='left', padx=8)
+        ttk.Button(row, text='Send to editor', command=self.on_live_use).pack(side='left')
+        ttk.Label(card, text='This page never writes to the device. The editor buffer is only replaced '
+                             'when you press "Send to editor" or when it still matches the last pulled save.',
+                  style='CardMuted.TLabel', wraplength=780, justify='left').pack(anchor='w', pady=(8, 0))
+
+        card2 = ttk.LabelFrame(f, text='Live Dark Lord stats (Frida, process-local)', padding=10)
+        card2.pack(fill='x', padx=4, pady=(0, 8))
+        ttk.Label(card2, text='Hooks UnitTable for Mawang tables and overrides their base stats. Applies to '
+                              'units and runs created after the hook starts; the save file is not touched.',
+                  style='CardMuted.TLabel', wraplength=780, justify='left').pack(anchor='w')
+        grid = ttk.Frame(card2); grid.pack(fill='x', pady=(6, 2))
+        self.live_stats = {}
+        defaults = (('Max HP', 'hp', '999999'), ('STR', 'str', '9999'), ('DEX', 'dex', '9999'),
+                    ('CON', 'con', '9999'), ('INT', 'int', '9999'), ('WIS', 'wis', '9999'),
+                    ('CHA', 'cha', '9999'))
+        for i, (label, key, val) in enumerate(defaults):
+            ttk.Label(grid, text=label).grid(row=0, column=i * 2, padx=(0, 2), sticky='e')
+            var = tk.StringVar(value=val)
+            ttk.Entry(grid, textvariable=var, width=8).grid(row=0, column=i * 2 + 1, padx=(0, 10))
+            self.live_stats[key] = var
+        hrow = ttk.Frame(card2); hrow.pack(fill='x', pady=(4, 0))
+        ttk.Button(hrow, text='Start live stats', style='Accent.TButton',
+                   command=self.on_start_live_hook).pack(side='left')
+        ttk.Button(hrow, text='Stop', command=self.on_stop_live_hook).pack(side='left', padx=6)
+        self.live_hook = tk.StringVar(value='stopped')
+        ttk.Label(hrow, textvariable=self.live_hook).pack(side='left', padx=12)
+        ttk.Label(card2, text='First start resolves the method RVAs (~15 s) and caches them per '
+                              'game build; later starts are instant.',
+                  style='CardMuted.TLabel').pack(anchor='w', pady=(6, 0))
+
+        card3 = ttk.LabelFrame(f, text='Live map - make every rendered node selectable (Frida)', padding=10)
+        card3.pack(fill='x', padx=4, pady=(0, 8))
+        ttk.Label(card3, text='Forces the run-map buttons to stay clickable and bypasses the adjacency '
+                              'check, so any node the map renders can be picked. Reopen the run map '
+                              'after starting. Process-local; stopping restores the normal rules.',
+                  style='CardMuted.TLabel', wraplength=780, justify='left').pack(anchor='w')
+        mrow2 = ttk.Frame(card3); mrow2.pack(fill='x', pady=(6, 0))
+        ttk.Button(mrow2, text='Start map hook', style='Accent.TButton',
+                   command=self.on_start_map_hook).pack(side='left')
+        ttk.Button(mrow2, text='Stop', command=self.on_stop_map_hook).pack(side='left', padx=6)
+        self.live_map = tk.StringVar(value='stopped')
+        ttk.Label(mrow2, textvariable=self.live_map).pack(side='left', padx=12)
+        jrow = ttk.Frame(card3); jrow.pack(fill='x', pady=(6, 0))
+        ttk.Label(jrow, text='Jump to turn', style='CardMuted.TLabel').pack(side='left')
+        self.map_turn = tk.StringVar(value='15')
+        ttk.Entry(jrow, textvariable=self.map_turn, width=5).pack(side='left', padx=(6, 6))
+        ttk.Button(jrow, text='Start + jump', command=self.on_start_map_turn).pack(side='left')
+        ttk.Label(jrow, text='the day cursor is applied when the run map loads',
+                  style='CardMuted.TLabel').pack(side='left', padx=8)
+        ttk.Label(card3, text='Only nodes the current turn rendered exist; the end-zone boss is not '
+                              'created until you reach its turn.',
+                  style='CardMuted.TLabel').pack(anchor='w', pady=(6, 0))
+
+    def _live_toggle(self):
+        if self.live_auto.get():
+            self.after(200, self._live_tick)
+
+    def _live_tick(self):
+        if getattr(self, '_live_busy', False):
+            self.after(1500, self._live_tick)
+            return
+        if not getattr(self, 'live_auto', None) or not self.live_auto.get():
+            self.after(1500, self._live_tick)
+            return
+        if time.time() < getattr(self, '_live_retry_at', 0):
+            self.after(2000, self._live_tick)
+            return
+        self.on_live_pull(silent=True)
+        self.after(3000, self._live_tick)
+
+    def on_live_pull(self, silent=False):
+        if getattr(self, '_live_busy', False):
+            return
+        try:
+            adb = self._find_adb()
+            if not adb:
+                raise RuntimeError('adb not found (set the path in Connection settings)')
+            devs = android.devices(adb)
+            if not devs:
+                raise RuntimeError('no adb device attached')
+            serial = self.serial.get().strip()
+            if serial not in devs:
+                serial = devs[0]
+            save_path = self.device_save.get().strip()
+        except Exception as e:
+            self._live_retry_at = time.time() + 10
+            self.live_time.set('pull failed: %s' % e)
+            if not silent:
+                self.log('live pull failed: %s' % e)
+            return
+        self._live_busy = True
+
+        def work():
+            try:
+                info = getattr(self, '_live_dev_info', None)
+                if info is None or info.get('serial') != serial:
+                    info = android.device_info(adb, serial)
+                    info['serial'] = serial
+                    self._live_dev_info = info
+                payload = {
+                    'serial': serial,
+                    'version': info.get('version') or '?',
+                    'abi': info.get('abi') or '?',
+                    'pid': dw_live.game_pid(adb, serial),
+                }
+                payload.update(dw_live.pull_plain(adb, serial, save_path))
+                self.after(0, lambda: self._apply_live(payload))
+            except Exception as e:
+                msg = str(e)
+                self._live_retry_at = time.time() + 10
+                if not silent:
+                    self.log('live pull failed: %s' % msg)
+                self.after(0, lambda: (self.live_time.set('pull failed: %s' % msg),
+                                       setattr(self, '_live_busy', False)))
+            else:
+                self.after(0, lambda: setattr(self, '_live_busy', False))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_live(self, info):
+        self._live_info = info
+        self.live_dev.set('%s (%s)' % (info['serial'], info.get('abi', '?')))
+        self.live_ver.set(info.get('version') or '?')
+        self.live_pid.set(str(info.get('pid')) if info.get('pid') else 'not running')
+        self.live_file.set('%d container bytes' % info.get('container_bytes', 0))
+        self.live_sha.set('%d bytes  %s' % (info.get('bytes', 0), (info.get('sha256') or '')[:16]))
+        self.live_time.set(time.strftime('%H:%M:%S', time.localtime(info.get('pulled_at') or time.time())))
+
+        changed = info.get('sha256') != getattr(self, '_live_last_sha', None)
+        fresh_buffer = self.text is None or self.text == getattr(self, '_live_last_text', None)
+        follows_live = getattr(self, '_buffer_source', 'none') in ('live', 'none')
+        if getattr(self, '_live_use_pending', False):
+            self._live_use_pending = False
+            try:
+                self._load_live(info)
+                self.log('live: editor now follows the running game (%d bytes)' % info.get('bytes', 0))
+            except Exception as e:
+                messagebox.showerror('Live save', str(e))
+        elif changed and self.live_follow.get() and fresh_buffer and follows_live:
+            self._load_live(info)
+            self.log('live: loaded game save %s (%d bytes)' % ((info.get('sha256') or '')[:16], info.get('bytes', 0)))
+        elif changed and getattr(self, '_live_notice_sha', None) != info.get('sha256'):
+            self._live_notice_sha = info.get('sha256')
+            self.log('live: game save changed on device (%d bytes); the editor buffer was not replaced '
+                     '(Send to editor to switch to it)' % info.get('bytes', 0))
+
+    def _load_live(self, info):
+        self.text = info['text']
+        self._live_last_text = info['text']
+        self._live_last_sha = info.get('sha256')
+        self._buffer_source = 'live'
+        self.path = None
+        self.path_var.set('LIVE: %s' % self.device_save.get().strip())
+        self._reload_from_text()
+
+    def on_live_use(self):
+        self._live_use_pending = True
+        self.on_live_pull()
+
+    def on_start_live_hook(self):
+        proc = getattr(self, '_live_proc', None)
+        if proc is not None and proc.poll() is None:
+            messagebox.showinfo('Live stats', 'The hook is already running.')
+            return
+        script = os.path.join(HERE, 'dw_live_stats.py')
+        if not os.path.exists(script):
+            messagebox.showerror('Live stats', 'dw_live_stats.py not found next to the editor.')
+            return
+        if getattr(sys, 'frozen', False):
+            messagebox.showerror('Live stats', 'Live hooks need the source checkout (python tools/dw_live_stats.py).')
+            return
+        cmd = [sys.executable, '-u', script, '--attach']
+        for key, flag in (('hp', '--hp'), ('str', '--str'), ('dex', '--dex'), ('con', '--con'),
+                          ('int', '--int'), ('wis', '--wis'), ('cha', '--cha')):
+            value = self.live_stats[key].get().strip()
+            if value:
+                cmd += [flag, value]
+        cmd += ['--wait', '0']
+        try:
+            self._live_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                               text=True, bufsize=1, creationflags=android.NO_WINDOW)
+        except Exception as e:
+            messagebox.showerror('Live stats', str(e))
+            return
+        self.live_hook.set('resolving (about 15 s)...')
+        self.log('live stats: ' + ' '.join(cmd[2:]))
+        threading.Thread(target=self._pump_live_hook, args=(self._live_proc,), daemon=True).start()
+
+    def _pump_live_hook(self, proc):
+        try:
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                if "'stage': 'scan" in line or "'stage': 'module'" in line:
+                    continue
+                self.log('live: ' + line)
+                m = re.search(r'\[\s*(\d+)/(\d+)\]', line)
+                if m:
+                    self.after(0, lambda i=m.group(1), n=m.group(2): self.live_hook.set('resolving %s/%s' % (i, n)))
+                elif 'hooked' in line:
+                    self.after(0, lambda: self.live_hook.set('active'))
+                elif line.startswith('live.'):
+                    self.after(0, lambda: self.live_hook.set('active'))
+                elif 'Traceback' in line or 'Error' in line:
+                    self.after(0, lambda l=line: self.live_hook.set(l[:80]))
+        except Exception:
+            pass
+        self.after(0, lambda: self.live_hook.set('stopped'))
+
+    def _on_close(self):
+        for attr in ('_live_proc', '_map_proc'):
+            proc = getattr(self, attr, None)
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        self.destroy()
+
+    def on_stop_live_hook(self):
+        proc = getattr(self, '_live_proc', None)
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        self.live_hook.set('stopped')
+        self.log('live stats: stopped')
+
+    # ------------------------------------------------------- live map hook
+    def on_start_map_hook(self):
+        self._start_map_process([])
+
+    def _start_map_process(self, extra):
+        proc = getattr(self, '_map_proc', None)
+        if proc is not None and proc.poll() is None:
+            messagebox.showinfo('Live map', 'The map hook is already running.')
+            return
+        script = os.path.join(HERE, 'dw_live_map.py')
+        if not os.path.exists(script):
+            messagebox.showerror('Live map', 'dw_live_map.py not found next to the editor.')
+            return
+        if getattr(sys, 'frozen', False):
+            messagebox.showerror('Live map', 'Live hooks need the source checkout (python tools/dw_live_map.py).')
+            return
+        cmd = [sys.executable, '-u', script, '--attach', '--wait', '0'] + list(extra)
+        try:
+            self._map_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                              text=True, bufsize=1, creationflags=android.NO_WINDOW)
+        except Exception as e:
+            messagebox.showerror('Live map', str(e))
+            return
+        self.live_map.set('starting...')
+        self.log('live map: ' + ' '.join(cmd[2:]))
+        threading.Thread(target=self._pump_map_hook, args=(self._map_proc,), daemon=True).start()
+
+    def _pump_map_hook(self, proc):
+        try:
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                if "'stage': 'scan" in line or "'stage': 'module'" in line:
+                    continue
+                self.log('live map: ' + line)
+                m = re.search(r'\[\s*(\d+)/(\d+)\]', line)
+                if m:
+                    self.after(0, lambda i=m.group(1), n=m.group(2): self.live_map.set('resolving %s/%s' % (i, n)))
+                elif 'map hook ready' in line:
+                    self.after(0, lambda: self.live_map.set('active - reopen the run map'))
+                elif 'Traceback' in line or 'Error' in line:
+                    self.after(0, lambda l=line: self.live_map.set(l[:80]))
+        except Exception:
+            pass
+        self.after(0, lambda: self.live_map.set('stopped'))
+
+    def on_start_map_turn(self):
+        try:
+            turn = int(self.map_turn.get())
+        except ValueError:
+            messagebox.showerror('Live map', 'Turn must be a number.')
+            return
+        self._start_map_process(['--turn', str(turn)])
+
+    def on_stop_map_hook(self):
+        proc = getattr(self, '_map_proc', None)
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        self.live_map.set('stopped')
+        self.log('live map: stopped')
+
     def _build_resources(self):
         f = self.tab_res
         cols = ('key', 'value')
@@ -958,6 +1294,28 @@ class App(tk.Tk):
         ttk.Button(side, text='Apply to selected form', command=self.on_set_darklord).pack(anchor='w', pady=4)
         ttk.Button(side, text='Unlock all forms', command=self.on_unlock_all_darklords).pack(anchor='w')
         ttk.Separator(side).pack(fill='x', pady=6)
+        ttk.Label(side, text='Essence level (OutExp.MWData.level, 1..5)').pack(anchor='w')
+        lvlrow = ttk.Frame(side); lvlrow.pack(anchor='w', pady=1)
+        self.dl_ess = tk.StringVar()
+        ttk.Entry(lvlrow, textvariable=self.dl_ess, width=8).pack(side='left')
+        ttk.Button(lvlrow, text='Set level', command=self.on_set_mw_level).pack(side='left', padx=4)
+        ttk.Separator(side).pack(fill='x', pady=6)
+        ttk.Label(side, text='Dark Lord stats — scale every stage of the selected form').pack(anchor='w')
+        stagerow = ttk.Frame(side); stagerow.pack(anchor='w', pady=1)
+        ttk.Label(stagerow, text='Stage', width=6).pack(side='left')
+        self.mw_stage = tk.StringVar(value='5')
+        ttk.Entry(stagerow, textvariable=self.mw_stage, width=6).pack(side='left')
+        ttk.Button(stagerow, text='Max form stats', command=self.on_max_mw_form).pack(side='left', padx=4)
+        ttk.Button(side, text='Max all forms', command=self.on_max_all_mw_forms).pack(anchor='w', pady=2)
+        ttk.Label(side, text='Sets essence level, Basic aspect and this form\'s LC_* authority\n'
+                             'stages together. The Dark Lord\'s six stats are computed from these\n'
+                             'values at run start, so this is the persistent stat control.',
+                  foreground='#666').pack(anchor='w', pady=(2, 0))
+        ttk.Separator(side).pack(fill='x', pady=6)
+        ttk.Label(side, text='This page edits save data only. Live stats for the running game\n'
+                             '(current Dark Lord, in-run units) are under ACTIVE GAME → Live Dark Lord.',
+                  foreground='#666', justify='left').pack(anchor='w')
+        ttk.Separator(side).pack(fill='x', pady=6)
         ttk.Label(side, text='Aspect enhancement (UpgAspe)').pack(anchor='w')
         arow = ttk.Frame(side); arow.pack(anchor='w', pady=1)
         ttk.Label(arow, text='Aspect', width=8).pack(side='left')
@@ -1018,6 +1376,7 @@ class App(tk.Tk):
             if self._match(e.get('key'), st.get('LEVEL')):
                 self.dl_tree.insert('', 'end', values=(e.get('key'), st.get('UNLOCKED'), st.get('LEVEL'),
                                                        st.get('TOKEN'), basic))
+        self._refresh_mwrun_info()
 
     def _dl_selected(self):
         sel = self.dl_tree.selection()
@@ -1030,18 +1389,45 @@ class App(tk.Tk):
         self.dl_level.set(vals[2])
         self.dl_token.set(vals[3])
         try:
+            self.dl_ess.set(str(ed.get_mw_level(self.text, self._dl_index)))
+        except Exception:
+            self.dl_ess.set('')
+        try:
             aspe = ed.get_mw_vault(self.text, self._dl_index, 'UpgAspe')
             lc = ed.get_mw_vault(self.text, self._dl_index, 'lcUpg')
         except Exception:
             aspe, lc = {}, {}
+        form = (vals[0] or '').strip()
         self.aspe_combo['values'] = sorted(aspe) or ['Basic']
         if self.aspe_key.get() not in aspe and aspe:
             self.aspe_key.set(sorted(aspe)[0])
         self.aspe_val.set(str(aspe.get(self.aspe_key.get(), 0)))
         self.lc_tree.delete(*self.lc_tree.get_children())
         for k, v in lc.items():
+            if form and not k.startswith('LC_%s_' % form):
+                continue
             if self._match(k, v):
                 self.lc_tree.insert('', 'end', values=(k, v))
+        self._refresh_mwrun_info()
+
+    def _refresh_mwrun_info(self):
+        if not hasattr(self, 'mwrun_info'):
+            return
+        try:
+            st = ed.ingame_mawang_stats(self.text)
+        except Exception:
+            st = {}
+        if not st:
+            self.mwrun_info.set('no active run in this save')
+            return
+        parts = []
+        for field in ('baseEft', 'growEft', 'awakeEft'):
+            vals = st.get(field) or {}
+            if not vals:
+                continue
+            shown = ', '.join('%s=%s' % (k, ('%g' % v)) for k, v in list(vals.items())[:7])
+            parts.append('%s: %s' % (field, shown))
+        self.mwrun_info.set(' | '.join(parts) if parts else 'playerMawang present, no stats found')
 
     def _refresh_mw_skins(self):
         if not hasattr(self, 'mwskin_unit_combo'):
@@ -1113,6 +1499,58 @@ class App(tk.Tk):
             self.log('%s stage = %s (form %d)' % (key, self.lc_val.get(), idx))
         except Exception as e:
             messagebox.showerror('Authority', str(e))
+
+    def on_set_mw_level(self):
+        try:
+            idx = getattr(self, '_dl_index', None)
+            if idx is None:
+                return
+            self.text = ed.set_mw_level(self.text, idx, int(self.dl_ess.get()))
+            self._reload_from_text()
+            self._select_dl(idx)
+            self.log('dark lord %d essence level = %s' % (idx, self.dl_ess.get()))
+        except Exception as e:
+            messagebox.showerror('Dark Lord level', str(e))
+
+    def on_max_mw_form(self):
+        try:
+            idx = getattr(self, '_dl_index', None)
+            if idx is None:
+                messagebox.showinfo('Dark Lord', 'Select a Dark Lord form first.')
+                return
+            stage = int(self.mw_stage.get() or 5)
+            self.text = ed.max_mw_form(self.text, idx, stage)
+            self._reload_from_text()
+            self._select_dl(idx)
+            self.log('form %d: all stat stages -> %d' % (idx, stage))
+        except Exception as e:
+            messagebox.showerror('Dark Lord stats', str(e))
+
+    def on_max_all_mw_forms(self):
+        try:
+            stage = int(self.mw_stage.get() or 5)
+            self.text = ed.max_all_mw_forms(self.text, stage)
+            self._reload_from_text()
+            self.log('all Dark Lord forms: all stat stages -> %d' % stage)
+        except Exception as e:
+            messagebox.showerror('Dark Lord stats', str(e))
+
+    def on_set_mwrun_stat(self):
+        if not hasattr(self, 'mwrun_field'):
+            self.log('run Dark Lord stats moved to ACTIVE GAME -> Live Dark Lord')
+            return
+        try:
+            field = self.mwrun_field.get().strip()
+            stat = self.mwrun_stat.get().strip()
+            value = self.mwrun_val.get().strip()
+            if not value:
+                return
+            self.text = ed.set_ingame_mawang_stat(self.text, field, stat, value)
+            self._reload_from_text()
+            self._refresh_mwrun_info()
+            self.log('run Dark Lord %s.%s = %s' % (field, stat, value))
+        except Exception as e:
+            messagebox.showerror('Run Dark Lord stat', str(e))
 
     def on_set_darklord(self):
         try:
@@ -1724,7 +2162,7 @@ class App(tk.Tk):
                     if rc == 0:
                         self.log('pushed %s -> %s' % (path, dev_path))
                     else:
-                        self.log('push failed: %s' % (err or out))
+                        raise RuntimeError('adb push failed (rc=%s): %s' % (rc, (err or out or '').strip() or 'no output'))
                 import dw_save_convert as conv
                 import dw_setup
                 dw_setup.ensure_frida(adb, serial_hint, log=self.log)
@@ -1745,6 +2183,7 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def _load_plain(self, path):
+        self._buffer_source = 'file'
         self.text = open(path, encoding='utf-8').read()
         self.path = path
         self.path_var.set(path)
@@ -1769,7 +2208,7 @@ class App(tk.Tk):
         dev = self.device_save.get().strip()
         r = self._adb(adb, serial, 'push', self.path, dev, timeout=120)
         if r.returncode != 0:
-            raise RuntimeError('adb push failed: %s' % (r.stderr or r.stdout))
+            raise RuntimeError('adb push failed (rc=%s): %s' % (r.returncode, (r.stderr or r.stdout or '').strip() or 'no output'))
         self.log('pushed %s -> %s' % (self.path, dev))
         return dev
 
@@ -1912,7 +2351,7 @@ class App(tk.Tk):
                              % ((err or out or '').strip() or 'unknown error'))
                 rc, out, err = android.push(adb, serial, path, dev, timeout=120)
                 if rc != 0:
-                    raise RuntimeError('adb push failed: %s' % ((err or out or '').strip() or 'unknown error'))
+                    raise RuntimeError('adb push failed (rc=%s): %s' % (rc, (err or out or '').strip() or 'no output'))
                 if not head_starts(adb, serial, dev, 'ES3E'):
                     raise RuntimeError('the save on the device does not look encrypted after the push; '
                                        'the game will not load it')
@@ -2103,7 +2542,7 @@ class App(tk.Tk):
                 open(path, 'w', encoding='utf-8', newline='').write(text)
                 rc, out, err = android.push(adb, serial, path, dev, timeout=120)
                 if rc != 0:
-                    raise RuntimeError('adb push failed: %s' % (err or out))
+                    raise RuntimeError('adb push failed (rc=%s): %s' % (rc, (err or out or '').strip() or 'no output'))
                 if not head_starts(adb, serial, dev, '{'):
                     raise RuntimeError('the save on the device is not plain JSON; refusing to start '
                                        '(this is what causes an empty save).')
@@ -2402,7 +2841,8 @@ def head_starts(adb, serial, path, prefix):
 def subprocess_run(cmd, timeout=25):
     import subprocess
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              creationflags=android.NO_WINDOW)
     except Exception as e:
         class R:
             returncode = 1

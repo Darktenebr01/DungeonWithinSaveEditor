@@ -12,6 +12,11 @@ import subprocess
 import sys
 
 PACKAGE = 'com.GameCoaster.DungeonWithin'
+
+# A windowed (pythonw) editor still makes Windows allocate a console for every
+# console child (adb, python) unless this flag is set; without it each poll or
+# push flashes a terminal window.
+NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
 ACTIVITY = PACKAGE + '/com.unity3d.player.UnityPlayerActivity'
 SAVE_NAME = 'save.es3'
 
@@ -110,7 +115,8 @@ def run(adb, args, timeout=30):
     """Run adb with optional -s serial (first element of args may be serial=None)."""
     cmd = [adb] + [a for a in args if a is not None]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                           creationflags=NO_WINDOW)
         return r.returncode, r.stdout or '', r.stderr or ''
     except Exception as e:
         return 1, '', str(e)

@@ -17,6 +17,12 @@ import subprocess
 import sys
 import time
 
+
+try:
+    from dw_android import NO_WINDOW
+except Exception:
+    NO_WINDOW = 0x08000000 if sys.platform == 'win32' else 0
+
 DEFAULT_DEC_RVA = 0x3453fa3
 DEFAULT_PACKAGE = 'com.GameCoaster.DungeonWithin'
 DEFAULT_ENDPOINT = '127.0.0.1:27042'
@@ -60,7 +66,7 @@ def convert_save(endpoint=None, dec_rva=None, timeout=45, package=DEFAULT_PACKAG
         if serial:
             cmd += ['-s', serial]
         cmd += ['forward', 'tcp:%s' % port, 'tcp:%s' % port]
-        subprocess.run(cmd, check=False, capture_output=True)
+        subprocess.run(cmd, check=False, capture_output=True, creationflags=NO_WINDOW)
 
     if dec_rva is None:
         import dw_methods

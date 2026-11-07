@@ -151,7 +151,7 @@ def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, t
 
     rc, out, err = android.push(adb, serial, side_local, side, timeout=120)
     if rc != 0:
-        raise RuntimeError('push failed: %s' % (err or out))
+        raise RuntimeError('push failed (rc=%s): %s' % (rc, (err or out or '').strip() or 'no output'))
     uid = _uid(adb, serial)
     if uid:
         android.adb(adb, serial, 'shell', 'chown', '%s:1078' % uid, side, timeout=15)

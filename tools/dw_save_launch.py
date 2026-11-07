@@ -25,6 +25,12 @@ import subprocess
 import sys
 import time
 
+
+try:
+    from dw_android import NO_WINDOW
+except Exception:
+    NO_WINDOW = 0x08000000 if sys.platform == 'win32' else 0
+
 DEFAULT_DEC_RVA = 0x3453fa3
 DEFAULT_ENC_RVA = 0x34535f8
 DEFAULT_PACKAGE = 'com.GameCoaster.DungeonWithin'
@@ -67,7 +73,7 @@ def launch_patched(endpoint=None, package=DEFAULT_PACKAGE, dec_rva=None,
             cmd += ['-s', serial]
         cmd += ['forward', 'tcp:%s' % port, 'tcp:%s' % port]
         try:
-            subprocess.run(cmd, check=False, capture_output=True)
+            subprocess.run(cmd, check=False, capture_output=True, creationflags=NO_WINDOW)
         except Exception as e:
             log('adb forward failed: %s' % e)
 

@@ -179,6 +179,70 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
+## Active Game vs Save file
+
+The left navigation is split by data source:
+
+- **ACTIVE GAME** - `Connection` and `Live Dark Lord`. This group reads the running game, never writes it.
+  `Live Dark Lord` pulls `save.es3` from the device every 3 seconds, decrypts it locally and shows device,
+  game build, process id, container/plain size, SHA and pull time. `Send to editor` loads the snapshot;
+  with **Load into the editor when the game saves** enabled the buffer is replaced only while it still
+  matches the last pull, so unsaved local edits are kept and the log tells you the game moved on.
+- **SAVE FILE** - Resources, Facilities, Units, Abilities, Dark Lord, Variants, Collections, Mementos,
+  Advanced. Everything here edits the loaded JSON and is written back with `Encrypt save` (or the
+  game-driven conversion).
+
+The Frida live-stat hook sits on the Active Game page and is process-local: it changes the Dark Lord's
+`UnitTable` base stats for units/runs created after it starts and never touches the save file.
+## Live map: make any rendered node selectable (Frida)
+
+`tools/dw_live_map.py` relaxes the run map while the game is running:
+
+```bat
+python -u tools\dw_live_map.py --attach
+```
+
+`--turn N` jumps the run's day cursor: the tool hooks `NodesUIContents.LoadDayTasks(StageData)` on the
+main thread and calls `StageData.set_dayNodeCursor(N)` before the map builds. The GUI exposes this as
+**Jump to turn** + **Start + jump** (default 15). The cursor is applied on the next map load, so finish
+the current node or revisit the map once after starting it.
+The same hook has **Start map hook / Stop** buttons on the ACTIVE GAME -> Live Dark Lord page, so it
+can be used without a terminal.
+
+- `NodeContainer.ApplyVisuals(..., interactable, ...)` is forced to `true`, so nodes the game
+  marked unclickable still accept clicks.
+- `NodesUIContents.OnClickDayTaskSpot` is replaced with a direct call to
+  `NodesUIContents._ConfirmDayNode(pin)`, which is the same method the normal flow calls once it
+  accepts a pick, so the map's adjacency/validity check no longer rejects the click.
+
+Reopen the map after starting the tool so the node buttons are rebuilt with the hook active.
+It only affects nodes the map actually renders (Dungeon Within builds the current turn only), the
+change is process-local, and stopping the tool restores the normal rules.
+## Live Dark Lord stats (Frida)
+
+A save only stores the Dark Lord's progression inputs; the six combat stats are built from the Mawang
+`UnitTable` when a unit/run is created. `tools/dw_live_stats.py` overrides those table getters for Mawang
+tables while the game runs, so the sheet and every unit created afterwards use the boosted values.
+
+```bat
+:: spawn the game and hook before a run/unit is built
+python -u tools\dw_live_stats.py --str 9999 --dex 9999 --con 9999 --int 9999 ^
+    --wis 9999 --cha 9999 --hp 999999
+
+:: or hook an already running game (applies to units/runs created from now on)
+python -u tools\dw_live_stats.py --attach --str 5000 --wait 600
+
+:: clear the overrides (hook only, useful to test resolution)
+python -u tools\dw_live_stats.py --attach --clear --wait 30
+```
+
+- Methods are resolved by managed name (no hardcoded RVAs): the first run takes ~15 s (one metadata pass per name group) and the
+  offsets are cached per `<version>:<abi>` under `work/live_stats/live_stats_rvas.json`, so later starts hook in about a second.
+- Only tables whose `get_IsMawang()` returns true are modified; enemies and heroes keep their stats.
+- The hook is process-local and never writes `save.es3`; restarting the game removes it.
+- Instances that already exist (a battle in progress, the current run's units) keep their constructed stats.
+  Attach before entering the battle / starting the run so the values are applied when stats are built.
+- Verified on v0.7.1 (b.212): a fresh run with `--str 9999` hit for 3008 damage where the base attack was 8-26.
 Design and format notes live in [docs/SAVE_EDITOR.md](docs/SAVE_EDITOR.md); release history in
 [CHANGELOG.md](CHANGELOG.md).
 

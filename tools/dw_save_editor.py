@@ -1009,6 +1009,116 @@ def set_mw_vault(text, index, field, key, value):
     return recompute_checksums(text)
 
 
+def mw_key(text, index):
+    s, e = mw_spans(text)[index]
+    return get_token(text, 'key', s, e).strip('"')
+
+
+def get_mw_level(text, index):
+    """Essence level of one Dark Lord form (OutExp.MWData.level)."""
+    s, e = mw_spans(text)[index]
+    return int(get_token(text, 'level', s, e))
+
+
+def set_mw_level(text, index, value):
+    s, e = mw_spans(text)[index]
+    text = set_token(text, 'level', str(int(value)), s, e)
+    return recompute_checksums(text)
+
+
+def max_mw_form(text, index, stage=5):
+    """Raise one Dark Lord form: essence level, Basic aspect and its own authority stages.
+
+    The Dark Lord's visible stats are computed from these persistent values (aspect stage,
+    per-form legacy/authority stages, essence level), so this is the save-side way to scale
+    them; stage is normally 1..5 but higher values are written as-is for experimentation.
+    """
+    stage = int(stage)
+    key = mw_key(text, index)
+    text = set_mw_level(text, index, stage)
+    text = set_mw_vault(text, index, 'UpgAspe', 'Basic', stage)
+    for k in sorted(get_mw_vault(text, index, 'lcUpg')):
+        if k.startswith('LC_%s_' % key):
+            text = set_mw_vault(text, index, 'lcUpg', k, stage)
+    return text
+
+
+def max_all_mw_forms(text, stage=5):
+    for i in range(len(mw_spans(text))):
+        text = max_mw_form(text, i, stage)
+    return text
+
+
+# ------------------------- Dark Lord inside the current run -------------------------
+# A run stores the played Dark Lord as IngameDataMgr.PlayerMawangData ("playerMawang") with
+# the same baseEft / growEft / awakeEft shapes as run units, so the six stats can be edited
+# directly while a run save is loaded.
+
+INGAME_MAWANG_KEYS = ('INGAME_DATA.playerMawang', 'INGAME_DATA.mawang',
+                      'INGAME_DATA.playerMawangData', 'INGAME_DATA.PlayerMawang')
+
+
+def ingame_mawang_span(text):
+    for key in INGAME_MAWANG_KEYS:
+        try:
+            return object_span(text, key)
+        except KeyError:
+            continue
+    return None
+
+
+def ingame_mawang_stats(text):
+    """{baseEft: {...}, growEft: {...}, awakeEft: {...}} for the run's Dark Lord, or {}."""
+    sp = ingame_mawang_span(text)
+    if sp is None:
+        return {}
+    s, e = sp
+    out = {}
+    for field in ('baseEft', 'growEft'):
+        try:
+            fi, fj = object_span(text, field, s, e)
+        except KeyError:
+            continue
+        vals = {}
+        for cs, ce in split_children(text, (fi, fj), '{'):
+            m = re.match(r'\s*"([^"]+)"\s*:\s*(-?[0-9.eE+]+)', text[cs:ce])
+            if m:
+                try:
+                    vals[m.group(1)] = float(m.group(2))
+                except ValueError:
+                    pass
+        out[field] = vals
+    try:
+        ai, aj = object_span(text, 'awakeEft', s, e)
+        vi, vj = object_span(text, 'values', ai, aj)
+        vals = {}
+        for cs, ce in split_children(text, (vi, vj), '{'):
+            m = re.match(r'\s*"([^"]+)"\s*:\s*(-?\d+)', text[cs:ce])
+            if m:
+                vals[m.group(1)] = int(m.group(2))
+        out['awakeEft'] = vals
+    except KeyError:
+        pass
+    return out
+
+
+def set_ingame_mawang_stat(text, field, stat, value):
+    """Write one stat of the run's Dark Lord (baseEft|growEft float, awakeEft int)."""
+    sp = ingame_mawang_span(text)
+    if sp is None:
+        raise KeyError('no active run: INGAME_DATA.playerMawang not in this save')
+    s, e = sp
+    if field in ('baseEft', 'growEft'):
+        fi, fj = object_span(text, field, s, e)
+        return set_token(text, stat, repr(float(value)), fi, fj)
+    if field == 'awakeEft':
+        ai, aj = object_span(text, 'awakeEft', s, e)
+        vi, vj = object_span(text, 'values', ai, aj)
+        text = set_token(text, stat, str(int(value)), vi, vj)
+        return recompute_checksums(text)
+    raise ValueError('field must be baseEft|growEft|awakeEft')
+
+
 def facility_spans(text):
     ai, aj = array_span(text, 'USER_DATA.m_Facilities')
     return list(split_children(text, (ai, aj), '['))
