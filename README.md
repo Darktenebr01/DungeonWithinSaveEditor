@@ -2,10 +2,15 @@
 
 Open-source **save editor for Dungeon Within** on Android (emulator or rooted phone).
 Edit gold and resources, monster levels, stats and abilities, facility modifiers, Dark Lord
-aspects and variants, then encrypt the save back with the game's own code so it loads like a
-normal save. No AES key is shipped, no offsets are hardcoded, and every edit is checksum-validated.
+aspects and variants — and, since **v1.4.7**, work against the *running game*: live save pull,
+live Dark Lord base stats, and a run-map jump that moves the day cursor straight to the boss.
+
+Reads decrypt the `ES3E` container locally (no game launch needed), writes go back through the
+game's own `CompressAndEncrypt`, and every edit is checksum-validated.
 
 [![Release](https://img.shields.io/github/v/release/Darktenebr01/DungeonWithinSaveEditor?label=download&color=f5a623)](https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.4.7-f5a623)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-25%20passing-2ea043)](tests/test_editor.py)
 [![License](https://img.shields.io/github/license/Darktenebr01/DungeonWithinSaveEditor?color=f5a623)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-2a2a2e)](#install-and-run)
 [![Game](https://img.shields.io/badge/game-Dungeon%20Within%20v0.7.1-2a2a2e)](#how-it-works)
@@ -14,24 +19,27 @@ normal save. No AES key is shipped, no offsets are hardcoded, and every edit is 
 
 ## How it works
 
-The save is an `ES3E` container encrypted by the game's own code. The editor does not
-reimplement that crypto. Instead it attaches with Frida and:
+The save is an `ES3E` container encrypted by the game's own code. Reading no longer needs a game
+launch: `tools/dw_es3.py` decrypts the container with the constants compiled into `ES3Saver`, which
+is what the ACTIVE GAME page uses to poll the device. Writing still goes through the game itself:
 
-1. starts the game and hooks `ES3Saver.DecryptAndDecompress`, capturing the plain JSON the
-   game produced;
-2. edits that JSON textually, touching only the scalar tokens it changes, so the ES3 dialect
-   (and every unrelated byte) stays intact;
-3. for writing back, fills the game's decrypted buffer with your JSON and calls the real
-   `CompressAndEncrypt` on the game thread, then writes the ciphertext over `save.es3` with libc.
+1. fills the game's decrypted buffer with your JSON and calls the real `CompressAndEncrypt` on the
+   game thread, then writes the ciphertext over `save.es3` with libc;
+2. when a read does go through the game (the **Convert encrypted…** button), the editor starts it and
+   hooks `ES3Saver.DecryptAndDecompress` to capture the plain JSON the game produced;
+3. edits are made textually, touching only the scalar tokens that change, so the ES3 dialect (and
+   every unrelated byte) stays intact.
 
-The two functions are found by name at runtime and cached per `<game version>:<abi>`, so there
-are no hardcoded offsets. `adb` and the device are auto-detected; a networked Frida endpoint can
-be entered by hand.
+The crypto functions are found by name at runtime and cached per `<game version>:<abi>`, so there
+are no hardcoded offsets. `adb` and the device are auto-detected; a networked Frida endpoint can be
+entered by hand.
 
 ## What you can do
 
 | Screen | What it does |
 | --- | --- |
+| **Live Dark Lord** (ACTIVE GAME) | Pulls the running game's save every 3 s, decrypts it locally, shows device/build/process/SHA, and starts the Frida base-stat hook for the Dark Lord |
+| **Live map** (ACTIVE GAME) | Makes every rendered run-map node selectable and jumps the run's day cursor to a chosen turn (boss/end zone) |
 | **Resources** | Edit every `USER_DATA.storage` currency/resource (gold, essence, tokens), searchable |
 | **Facilities** | Facility type, ability modifiers (bonus index that drives durability), modifications picked from a dropdown or typed as keys (`prefixs`), rank-up |
 | **Units** | Level, essence/EXP, awake and training stage, base/grow stats, custom name, trait, variant (`Irochi`), skin, innate trait display, promotion (`RankUp`/`Transcend`), monster type replacement |
@@ -46,6 +54,24 @@ be entered by hand.
 A search box at the top filters every list. **Apply to file** writes the local JSON,
 **Encrypt save** turns it back into a normal `ES3E` save, **Validate** recomputes and checks all
 413 DataVault checksums.
+
+### Live tools (v1.4.7)
+
+The **ACTIVE GAME** group drives the running game instead of the file:
+
+- **Live Dark Lord** — polls `save.es3` from the device every 3 s and decrypts it locally with
+  `tools/dw_es3.py`. The editor buffer is replaced only while it still matches the last snapshots, so
+  unsaved edits are never silently discarded.
+- **Start live stats** — Frida hook that overrides `UnitTable` base stats for Dark Lord ("Mawang")
+  tables (`--hp`, `--str`, `--dex`, `--con`, `--int`, `--wis`, `--cha`). Units and runs created after
+  it starts use the new values; the save file is untouched. Cold start ~15 s, later starts ~1 s from
+  the cached RVAs.
+- **Start map hook** — forces every rendered run-map node to stay clickable and bypasses the
+  adjacency check, so any node the map shows can be picked.
+- **Jump to turn** — `--turn N` writes `StageData.dayNodeCursor` on Unity's main thread when the map
+  loads, jumping the run straight to a chosen turn (1–16; 15 lands on the boss/end zone in testing).
+
+Everything is process-local: stopping a hook or restarting the game restores the normal rules.
 
 ![Abilities tab — equipped parts per monster and cloning between monsters](docs/abilities.png)
 
@@ -141,6 +167,24 @@ No. The game decrypts and encrypts the file itself; the editor only drives it.
 Usually. The crypto functions are located by name and offsets are cached per
 `<version>:<abi>`; a new build needs one calibration run.
 
+### Can I edit the Dark Lord's live stats?
+
+Yes. **Live Dark Lord → Start live stats** hooks `UnitTable` and overrides the base stats of the
+Dark Lord's ("Mawang") tables for units and runs created after the hook starts. It is process-local
+and never writes the save.
+
+### Can I skip the run map or jump to the boss?
+
+Yes, with the live map hook: **Start map hook** makes every rendered node selectable, and
+**Jump to turn** sets the run's day cursor through `StageData.set_dayNodeCursor` when the map
+reloads — `15` lands on the boss/end zone on the current build. Skipped days do not grant their
+rewards.
+
+### Does the live editor change my save file?
+
+No. The ACTIVE GAME page only reads the save from the device, and the Frida hooks change memory in
+the running process. Writing still happens through the normal **Encrypt save** path.
+
 ### Where is the save file?
 
 `/sdcard/Android/data/com.GameCoaster.DungeonWithin/files/save.es3` (the editor probes this path
@@ -158,6 +202,10 @@ tools/dw_save_convert.py decrypt: capture the plain save
 tools/dw_save_encrypt.py encrypt: write the edited save back
 tools/dw_save_launch.py  plain-save launcher (fallback mode)
 tools/dw_android.py      adb / device / Frida discovery
+tools/dw_es3.py          ES3E container read/write (local decrypt for live pulls)
+tools/dw_live.py         pull the running game's save and decrypt it
+tools/dw_live_stats.py   Frida hook: Dark Lord base stats
+tools/dw_live_map.py     Frida hook: selectable map nodes + day-cursor jump
 tools/dw_methods.py      runtime method offsets, cached per build
 tools/dw_names.py        capture monster names from the running game
 tools/dw_dump_parts.py   dump live ability/part tables
@@ -178,6 +226,9 @@ tests/                   parser/checksum tests
 python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
+
+The suite covers the text-preserving parser, DataVault checksums, ES3E container vectors and Dark
+Lord editing (**25 tests**).
 
 ## Active Game vs Save file
 

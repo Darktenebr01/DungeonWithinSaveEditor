@@ -4,20 +4,20 @@
 <meta charset="utf-8">
 <meta name="google-site-verification" content="VeBiBIV0wOXaWF_htzTu3X468ycp7aUt4R2lL-CAvTI">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dungeon Within Save Editor — edit resources, monsters, facilities, Dark Lord (Android)</title>
-<meta name="description" content="Free open-source save editor for Dungeon Within on Android. Change gold and resources, monster levels and abilities, facility modifiers, Dark Lord aspects and variants, then encrypt the save back with the game's own code. Works on emulators and rooted phones, any ABI.">
-<meta name="keywords" content="Dungeon Within save editor, Dungeon Within cheats, Dungeon Within mod, Dungeon Within save file, edit Dungeon Within save, Dungeon Within android, Dungeon Within gold, Dungeon Within resources, Dungeon Within monsters, Dungeon Within abilities, Dungeon Within Dark Lord, Dungeon Within facilities, frida save editor, il2cpp save editor">
+<title>Dungeon Within Save Editor v1.4.7 — resources, monsters, Dark Lord, live stats &amp; map jump (Android)</title>
+<meta name="description" content="Free open-source save editor for Dungeon Within on Android. Edit gold and resources, monsters, abilities, facilities, Dark Lord forms and variants, pull the running game's save, override live Dark Lord stats and jump the run map to the boss. Encrypts through the game itself; works on emulators and rooted phones, any ABI.">
+<meta name="keywords" content="Dungeon Within save editor, Dungeon Within cheats, Dungeon Within mod, Dungeon Within save file, edit Dungeon Within save, Dungeon Within android, Dungeon Within gold, Dungeon Within resources, Dungeon Within monsters, Dungeon Within abilities, Dungeon Within Dark Lord, Dungeon Within facilities, Dungeon Within live stats, Dungeon Within map jump, Dungeon Within skip map, Dungeon Within boss skip, ES3 save editor, frida save editor, il2cpp save editor, android save editor">
 <link rel="canonical" href="https://darktenebr01.github.io/DungeonWithinSaveEditor/">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Dungeon Within Save Editor">
 <meta property="og:title" content="Dungeon Within Save Editor — Android save editor">
-<meta property="og:description" content="Edit Dungeon Within saves: resources, monsters, abilities, facilities, Dark Lord, variants. Decrypts and re-encrypts through the game itself.">
+<meta property="og:description" content="Edit Dungeon Within saves and the running game: resources, monsters, abilities, facilities, Dark Lord, variants, live stats, map jump. Decrypts locally and re-encrypts through the game itself.">
 <meta property="og:url" content="https://darktenebr01.github.io/DungeonWithinSaveEditor/">
 <meta property="og:image" content="https://darktenebr01.github.io/DungeonWithinSaveEditor/units.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Dungeon Within Save Editor">
-<meta name="twitter:description" content="Open-source save editor for Dungeon Within (Android): resources, monsters, abilities, facilities, Dark Lord.">
+<meta name="twitter:description" content="Open-source save editor for Dungeon Within (Android): resources, monsters, Dark Lord, live stats and map jump.">
 <meta name="twitter:image" content="https://darktenebr01.github.io/DungeonWithinSaveEditor/units.png">
 <style>
   :root { color-scheme: dark; }
@@ -63,7 +63,7 @@
 <main class="wrap">
   <section class="hero">
     <h1>Dungeon Within Save Editor
-      <small>Open-source save editor for Dungeon Within on Android — emulator or rooted phone.</small>
+      <small>Open-source save editor for Dungeon Within on Android — emulator or rooted phone, plus live Dark Lord stats and map jumps.</small>
     </h1>
     <p class="lead">Change gold and resources, monster levels, stats and abilities, facility modifiers,
       Dark Lord aspects and variants, then encrypt the save back with the game's own code so it loads
@@ -78,6 +78,8 @@
   <h2>What you can edit</h2>
   <table>
     <tr><th>Screen</th><th>What it does</th></tr>
+    <tr><td>Live Dark Lord</td><td>Pulls the running game&#39;s save every 3 s, decrypts it locally, shows device/build/SHA, and applies live Frida base-stat overrides for the Dark Lord.</td></tr>
+    <tr><td>Live map</td><td>Makes every rendered map node selectable and jumps the run&#39;s day cursor to a chosen turn — straight to the boss/end zone.</td></tr>
     <tr><td>Resources</td><td>Every currency and resource in the save (gold, essence, tokens), searchable.</td></tr>
     <tr><td>Facilities</td><td>Facility type, ability modifiers (durability), modifications from a dropdown, rank-up.</td></tr>
     <tr><td>Units</td><td>Monster level, essence, awake and training stage, base stats, custom name, trait, variant, skin, promotion, monster type.</td></tr>
@@ -88,6 +90,16 @@
     <tr><td>Mementos</td><td>Memento buy counts.</td></tr>
     <tr><td>Advanced</td><td>Read or write any JSON path in the save.</td></tr>
   </table>
+
+  <h2>Live tools (v1.4.7)</h2>
+  <p>The <strong>ACTIVE GAME</strong> group drives the running game instead of the save file:</p>
+  <ul>
+    <li><strong>Live Dark Lord</strong> — polls <code>save.es3</code> from the device every 3 seconds and decrypts it locally; the editor buffer is only replaced while it matches the last snapshot.</li>
+    <li><strong>Start live stats</strong> — Frida hook that overrides <code>UnitTable</code> base stats for Dark Lord tables (HP, STR, DEX, CON, INT, WIS, CHA). Units and runs created after it starts use the new values; the save is untouched.</li>
+    <li><strong>Start map hook</strong> — forces every rendered run-map node to stay clickable and bypasses the adjacency check.</li>
+    <li><strong>Jump to turn</strong> — writes <code>StageData.dayNodeCursor</code> on Unity&#39;s main thread when the map loads, jumping to a chosen turn (1–16; 15 lands on the boss in testing).</li>
+  </ul>
+  <p>Everything is process-local: stopping a hook or restarting the game restores the normal rules.</p>
 
   <h2>How it works</h2>
   <p>Dungeon Within stores its save as an <code>ES3E</code> container encrypted by the game's own code.
@@ -115,6 +127,10 @@
   <details><summary>Will it work after a game update?</summary>
     <p>Usually yes. The two crypto functions are located by name and the offsets are cached per
        <code>version:abi</code>; a new build only needs one calibration run.</p></details>
+  <details><summary>Can I edit the Dark Lord&#39;s live stats?</summary>
+    <p>Yes. <em>Live Dark Lord → Start live stats</em> hooks the game and overrides the base stats of the Dark Lord tables for units and runs created after the hook starts. It never writes the save.</p></details>
+  <details><summary>Can I skip the run map or jump to the boss?</summary>
+    <p>Yes. <em>Start map hook</em> makes every rendered node selectable, and <em>Jump to turn</em> sets the run&#39;s day cursor when the map reloads (15 lands on the boss/end zone). Skipped days do not grant their rewards.</p></details>
   <details><summary>Is it safe for my save?</summary>
     <p>It keeps backups, verifies the encrypted output against a marker value and rolls back on mismatch.
        Keep your own copy anyway, and use it on single-player saves only.</p></details>
@@ -148,7 +164,8 @@
       "description": "Open-source save editor for Dungeon Within on Android. Edits resources, monsters, abilities, facilities, Dark Lord forms and variants, then re-encrypts the save with the game's own code.",
       "url": "https://darktenebr01.github.io/DungeonWithinSaveEditor/",
       "downloadUrl": "https://github.com/Darktenebr01/DungeonWithinSaveEditor/releases/latest",
-      "softwareVersion": "1.2.0",
+      "softwareVersion": "1.4.7",
+      "dateModified": "2026-11-06",
       "license": "https://github.com/Darktenebr01/DungeonWithinSaveEditor/blob/main/LICENSE",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
       "author": { "@type": "Person", "name": "Darktenebr01", "url": "https://github.com/Darktenebr01" },
@@ -163,6 +180,10 @@
           "acceptedAnswer": { "@type": "Answer", "text": "Connect the device, press Find save to decrypt, change values, then Apply to file and Encrypt save. The encrypted result is verified before it replaces the save." } },
         { "@type": "Question", "name": "Do I need the encryption key?",
           "acceptedAnswer": { "@type": "Answer", "text": "No. The game decrypts and encrypts the file itself; the editor only drives it." } },
+        { "@type": "Question", "name": "Can I edit the Dark Lord's live stats?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Start live stats hooks the running game and overrides the Dark Lord base stats for units and runs created after the hook starts; the save file is not modified." } },
+        { "@type": "Question", "name": "Can I skip the run map or jump to the boss?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The map hook makes rendered nodes selectable and Jump to turn sets the run's day cursor on the next map load (15 lands on the boss in testing)." } },
         { "@type": "Question", "name": "Will it work after a game update?",
           "acceptedAnswer": { "@type": "Answer", "text": "Usually yes. The crypto functions are found by name and offsets are cached per version and ABI." } }
       ]
