@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.13
+
+- **Convert** and **Encrypt** now launch the game first and attach to it, instead of trying a Frida
+  spawn first. The game window therefore appears immediately, and a wedged/unavailable Frida agent
+  no longer prevents the launch.
+- Attaching retries while the game is still initialising (`ProcessNotRespondingError`), so early
+  attaches no longer fail on 0.7.8.
+- If an attach does stall, restart the agent with **Prepare device** (it restarts frida-server).
+
+
 ## 1.4.12
 
 - **Find save / Open** recognise `ES3B` containers as encrypted, not as broken JSON. Previously an

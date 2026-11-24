@@ -78,7 +78,16 @@ def _attach_capture(dev, adb, serial, package, dec_rva, timeout, log):
     if pid is None:
         raise RuntimeError('game process did not appear')
     log('attaching to pid %s' % pid)
-    session = dev.attach(pid)
+    session = None
+    for _ in range(40):
+        try:
+            session = dev.attach(pid)
+            break
+        except Exception as e:
+            log('attach retry: %s' % e)
+            time.sleep(0.5)
+    if session is None:
+        raise RuntimeError('could not attach to the game process')
     script = session.create_script(JS % int(dec_rva))
     state = {'data': None}
 
@@ -125,44 +134,7 @@ def convert_save(endpoint=None, dec_rva=None, timeout=45, package=DEFAULT_PACKAG
     import dw_android
 
     dev = dw_android.frida_device(endpoint)
-    try:
-        for p in dev.enumerate_processes():
-            if p.name == 'DungeonWithin':
-                dev.kill(p.pid)
-    except Exception:
-        pass
-    time.sleep(1)
-    pid = dev.spawn([package])
-    log('spawned game pid %s' % pid)
-    session = dev.attach(pid)
-    script = session.create_script(JS % int(dec_rva))
-    state = {'data': None}
-
-    def on_message(msg, data):
-        if msg['type'] == 'send':
-            p = msg['payload']
-            log(str(p))
-            if data is not None and state['data'] is None:
-                state['data'] = bytes(data)
-                log('captured plaintext: %d bytes' % len(data))
-        else:
-            log('script error: %s' % msg.get('description'))
-
-    script.on('message', on_message)
-    script.load()
-    dev.resume(pid)
-
-    deadline = time.time() + timeout
-    while time.time() < deadline and state['data'] is None:
-        time.sleep(0.3)
-    if state['data'] is None:
-        log('spawned process produced no plaintext; retrying with a normal launch')
-        try:
-            session.detach()
-        except Exception:
-            pass
-        return _attach_capture(dev, adb, serial, package, int(dec_rva), timeout, log)
-    return state['data']
+    return _attach_capture(dev, adb, serial, package, int(dec_rva), timeout, log)
 
 
 def main():

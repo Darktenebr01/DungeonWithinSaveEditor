@@ -148,7 +148,16 @@ def _attach_encrypt(dev, adb, serial, dec_rva, enc_rva, need, side, remote, time
     if pid is None:
         return {'done': False, 'err': 'game process did not appear'}
     log('attaching to pid %s' % pid)
-    session = dev.attach(pid)
+    session = None
+    for _ in range(40):
+        try:
+            session = dev.attach(pid)
+            break
+        except Exception as e:
+            log('attach retry: %s' % e)
+            time.sleep(0.5)
+    if session is None:
+        raise RuntimeError('could not attach to the game process')
     script = session.create_script(JS_FILL_AND_ENCRYPT % {
         'dec': format(dec_rva, 'x'), 'enc': format(enc_rva, 'x'),
         'need': need, 'side': side, 'path': remote})
@@ -218,60 +227,11 @@ def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, t
     android.pull(adb, serial, remote, backup, timeout=120)
 
     dev = android.frida_device(endpoint)
-    try:
-        for p in dev.enumerate_processes():
-            if p.name == 'DungeonWithin':
-                dev.kill(p.pid)
-    except Exception:
-        pass
-    time.sleep(1)
-    pid = dev.spawn([android.PACKAGE])
-    log('spawned game pid %s' % pid)
-    session = dev.attach(pid)
-    script = session.create_script(JS_FILL_AND_ENCRYPT % {
-        'dec': format(dec_rva, 'x'), 'enc': format(enc_rva, 'x'),
-        'need': need, 'side': side, 'path': remote})
-    state = {'done': False, 'err': None, 'clen': 0, 'buf': 0}
-
-    def on_message(msg, data):
-        if msg['type'] != 'send':
-            log('script: %s' % msg.get('description'))
-            return
-        p = msg['payload']
-        if 'hooked' in p or 'loaded' in p or 'loadErr' in p:
-            log('script ready: %s' % p)
-        if 'skip' in p:
-            log('buffer too small (%d), waiting for a bigger one' % p['skip'])
-        if p.get('encrypted'):
-            state.update(done=True, clen=p['encrypted'], buf=p.get('buffer', 0))
-            log('encrypted %d bytes from a %d-byte buffer' % (p['encrypted'], p.get('buffer', 0)))
-        elif p.get('err'):
-            state['err'] = p['err']
-            log('script error: %s' % p['err'])
-
-    script.on('message', on_message)
-    script.load()
-    dev.resume(pid)
-
-    start = time.time()
-    while time.time() - start < timeout and not state['done']:
-        time.sleep(1)
-    if not state['done']:
-        try:
-            session.detach()
-        except Exception:
-            pass
-        log('spawned process did not encrypt; retrying with a normal launch')
-        state = _attach_encrypt(dev, adb, serial, dec_rva, enc_rva, need, side, remote, timeout, log)
+    state = _attach_encrypt(dev, adb, serial, dec_rva, enc_rva, need, side, remote, timeout, log)
     if not state['done']:
         raise RuntimeError('encryption failed%s' % ((': ' + state['err']) if state['err'] else ' (timeout)'))
-
     time.sleep(1)
     android.adb(adb, serial, 'shell', 'am', 'force-stop', android.PACKAGE, timeout=20)
-    try:
-        session.detach()
-    except Exception:
-        pass
     if uid:
         android.adb(adb, serial, 'shell', 'chown', '%s:1078' % uid, remote, timeout=15)
 
