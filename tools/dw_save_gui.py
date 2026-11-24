@@ -651,6 +651,14 @@ class App(tk.Tk):
         self.live_map.set('starting...')
         self._run_inproc('dw_live_map', argv, 'Live map', self.live_map)
 
+    def on_start_map_turn(self):
+        try:
+            turn = int(self.map_turn.get())
+        except ValueError:
+            messagebox.showerror('Live map', 'Turn must be a number.')
+            return
+        self._start_map_process(['--turn', str(turn)])
+
     def on_stop_map_hook(self):
         try:
             import dw_live_map as _mod

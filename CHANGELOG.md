@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.15
+
+- Fixed the startup crash `'tkinler.tkapp' object has no attribute 'on_start_map_turn'` introduced in
+  1.4.14: the **Start + jump** handler was removed along with the old subprocess launcher. Restored.
+
+
 ## 1.4.14
 
 - **Live Dark Lord / Live map work in the packaged exe.** They no longer launch helper `.py` files (which
