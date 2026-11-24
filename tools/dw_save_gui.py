@@ -45,6 +45,7 @@ DEFAULTS = {
 
 STATS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA', 'HP', 'MainStat']
 EFT_STATS = ['MaxHP', 'Strength', 'Dexterity', 'Constitution', 'INT', 'WIS', 'CHA']
+STAT_EFFECT_KEYS = {'INT': 'Intelligence', 'WIS': 'Wisdom', 'CHA': 'Charisma'}
 
 
 def load_config():
@@ -922,13 +923,14 @@ class App(tk.Tk):
             v = tk.StringVar()
             self.unit_stat_vars[st] = v
             ttk.Entry(grid, textvariable=v, width=12).grid(row=r, column=1, pady=1)
-            ttk.Button(grid, text='set base', width=9,
-                       command=lambda s=st: self.on_set_unit_stat('baseEft', s)).grid(row=r, column=2, padx=2)
-            ttk.Button(grid, text='set grow', width=9,
-                       command=lambda s=st: self.on_set_unit_stat('growEft', s)).grid(row=r, column=3)
-            if st != 'MaxHP':
+            if st == 'MaxHP':
+                ttk.Button(grid, text='set base', width=9,
+                           command=lambda s=st: self.on_set_unit_stat('baseEft', s)).grid(row=r, column=2, padx=2)
+                ttk.Button(grid, text='set grow', width=9,
+                           command=lambda s=st: self.on_set_unit_stat('growEft', s)).grid(row=r, column=3)
+            else:
                 ttk.Button(grid, text='set stat', width=9,
-                           command=lambda s=st: self.on_set_unit_stat('statEft', s)).grid(row=r, column=4, padx=(2, 0))
+                           command=lambda s=st: self.on_set_unit_stat('statEft', s)).grid(row=r, column=2, padx=2)
 
         ttk.Label(side, text='Awake (awakeEft vault):').pack(anchor='w', pady=(10, 2))
         ag = ttk.Frame(side); ag.pack(anchor='w')
@@ -1960,7 +1962,7 @@ class App(tk.Tk):
             if st == 'MaxHP':
                 self.unit_stat_vars[st].set(str((u.get('baseEft') or {}).get(st, '')))
             else:
-                self.unit_stat_vars[st].set(str(stat_eft.get(st, '')))
+                self.unit_stat_vars[st].set(str(stat_eft.get(STAT_EFFECT_KEYS.get(st, st), '')))
         for st in STATS:
             self.awake_vars[st].set(str(((u.get('awakeEft') or {}).get('values') or {}).get(st, 0)))
         self._selected_unit = idx
@@ -2767,6 +2769,8 @@ class App(tk.Tk):
             if idx is None:
                 return
             val = float(self.unit_stat_vars[stat].get())
+            if field == 'statEft':
+                stat = STAT_EFFECT_KEYS.get(stat, stat)
             s, e = self._unit_span(idx)
             fi, fj = ed.object_span(self.text, field, s, e)
             self.text = ed.set_token(self.text, stat, repr(val), fi, fj)

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.10
+
+- Unit stats: the short labels (INT/WIS/CHA) map to the 0.7.8 `statEft` keys (`Intelligence`,
+  `Wisdom`, `Charisma`). Setting them no longer raises `KeyError: 'INT'`.
+- The stat panel now shows **set base/set grow** only for MaxHP and **set stat** for the six
+  `statEft` stats, matching where 0.7.8 stores them.
+
+
 ## 1.4.9
 
 - Fixed the packaged exe failing at startup with `ModuleNotFoundError: No module named '_cffi_backend'`:
