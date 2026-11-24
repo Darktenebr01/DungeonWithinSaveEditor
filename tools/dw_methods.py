@@ -18,7 +18,7 @@ import time
 
 import dw_android as android
 
-CACHE_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'DungeonWithinSaveEditor')
+CACHE_DIR = os.environ.get('DW_CACHE_DIR') or os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'DungeonWithinSaveEditor')
 CACHE_FILE = os.path.join(CACHE_DIR, 'methods.json')
 
 RESOLVE_JS = r"""

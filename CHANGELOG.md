@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.8
+
+- **Dungeon Within 0.7.8 support.** The game now writes an `ES3B` container and moved data:
+  - reading uses the game itself again: `dw_save_convert` / `dw_save_encrypt` fall back to a normal
+    launch + early Frida attach when a spawn dies, so converts and encryption work on 0.7.8;
+  - encryption accepts `ES3B` output and verifies it by decrypting the result again;
+  - unit stats are read/written from `statEft` (STR..CHA) and `baseEft`/`growEft` for MaxHP;
+  - unit level/EXP/awake/training come from `USER_DATA.unitExp` (`unitIdx` keys);
+  - live pull reports `ES3B` clearly instead of failing with a container error.
+- Path-less saves (live buffers) can now be encrypted or applied: the editor writes a local copy first.
+- The method cache and encrypt payload directory honour `DW_CACHE_DIR`.
+
+
 ## 1.4.7
 
 - Live map can now jump the run's day cursor: `dw_live_map.py --turn N` hooks

@@ -13,13 +13,13 @@ game's own `CompressAndEncrypt`, and every edit is checksum-validated.
 [![Tests](https://img.shields.io/badge/tests-25%20passing-2ea043)](tests/test_editor.py)
 [![License](https://img.shields.io/github/license/Darktenebr01/DungeonWithinSaveEditor?color=f5a623)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-2a2a2e)](#install-and-run)
-[![Game](https://img.shields.io/badge/game-Dungeon%20Within%20v0.7.1-2a2a2e)](#how-it-works)
+[![Game](https://img.shields.io/badge/game-Dungeon%20Within%20v0.7.8-2a2a2e)](#how-it-works)
 
 ![Dungeon Within Save Editor — Units tab showing monster levels, traits and variants](docs/units.png)
 
 ## How it works
 
-The save is an `ES3E` container encrypted by the game's own code. Reading no longer needs a game
+The save is an `ES3E`/`ES3B` container encrypted by the game's own code (0.7.8+ writes `ES3B`). Reading no longer needs a game
 launch: `tools/dw_es3.py` decrypts the container with the constants compiled into `ES3Saver`, which
 is what the ACTIVE GAME page uses to poll the device. Writing still goes through the game itself:
 

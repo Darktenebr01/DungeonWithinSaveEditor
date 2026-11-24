@@ -413,7 +413,10 @@ def set_unit_exp(text, key, field, value):
 def unit_index_key(text, index):
     spans = unit_element_spans(text)
     s, e = spans[index]
-    return get_token(text, 'unitIdx', s, e).strip('"')
+    try:
+        return get_token(text, 'unitIdx', s, e).strip('"')
+    except KeyError:
+        return get_token(text, 'unitIndex', s, e).strip('"')
 
 
 def unit_parts(text, index):
@@ -1268,7 +1271,7 @@ def cmd_unit_stat(args):
         print('unit index out of range 0..%d' % (len(spans) - 1))
         return 1
     s, e = spans[args.index]
-    if args.field in ('baseEft', 'growEft'):
+    if args.field in ('baseEft', 'growEft', 'statEft'):
         fi, fj = object_span(text, args.field, s, e)
         text = set_token(text, args.stat, repr(float(args.value)), fi, fj)
     elif args.field == 'awakeEft':
@@ -1277,7 +1280,7 @@ def cmd_unit_stat(args):
         text = set_token(text, args.stat, str(int(args.value)), vi, vj)
         text = recompute_checksums(text, True)
     else:
-        print('field must be baseEft|growEft|awakeEft')
+        print('field must be statEft|baseEft|growEft|awakeEft')
         return 1
     save(args.file, text)
     print('unit %d %s %s = %s' % (args.index, args.field, args.stat, args.value))

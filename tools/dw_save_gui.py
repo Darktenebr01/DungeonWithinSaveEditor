@@ -915,7 +915,7 @@ class App(tk.Tk):
         ttk.Button(info, text='Set unit progress', command=self.on_set_unit_progress).pack(anchor='w', pady=4)
 
         self.unit_stat_vars = {}
-        ttk.Label(side, text='Stats (baseEft / growEft):').pack(anchor='w', pady=(8, 2))
+        ttk.Label(side, text='Stats (statEft for STR..CHA, baseEft/growEft for MaxHP):').pack(anchor='w', pady=(8, 2))
         grid = ttk.Frame(side); grid.pack(anchor='w')
         for r, st in enumerate(EFT_STATS):
             ttk.Label(grid, text=st, width=13).grid(row=r, column=0, sticky='w')
@@ -926,6 +926,9 @@ class App(tk.Tk):
                        command=lambda s=st: self.on_set_unit_stat('baseEft', s)).grid(row=r, column=2, padx=2)
             ttk.Button(grid, text='set grow', width=9,
                        command=lambda s=st: self.on_set_unit_stat('growEft', s)).grid(row=r, column=3)
+            if st != 'MaxHP':
+                ttk.Button(grid, text='set stat', width=9,
+                           command=lambda s=st: self.on_set_unit_stat('statEft', s)).grid(row=r, column=4, padx=(2, 0))
 
         ttk.Label(side, text='Awake (awakeEft vault):').pack(anchor='w', pady=(10, 2))
         ag = ttk.Frame(side); ag.pack(anchor='w')
@@ -1952,8 +1955,12 @@ class App(tk.Tk):
         self.unit_essence.set(str(ev.get('EXP', 0)))
         self.unit_awake.set(str(ev.get('AWAKE_LEVEL', 0)))
         self.unit_train.set(str(ev.get('TRAIN_LEVEL', 0)))
+        stat_eft = u.get('statEft') or {}
         for st in EFT_STATS:
-            self.unit_stat_vars[st].set(str((u.get('baseEft') or {}).get(st, '')))
+            if st == 'MaxHP':
+                self.unit_stat_vars[st].set(str((u.get('baseEft') or {}).get(st, '')))
+            else:
+                self.unit_stat_vars[st].set(str(stat_eft.get(st, '')))
         for st in STATS:
             self.awake_vars[st].set(str(((u.get('awakeEft') or {}).get('values') or {}).get(st, 0)))
         self._selected_unit = idx
@@ -2226,10 +2233,22 @@ class App(tk.Tk):
         os.makedirs(d, exist_ok=True)
         return d
 
+    def _ensure_local_path(self):
+        """Live-pulled buffers have no file; give them one before saving/encrypting."""
+        if self.path and os.path.exists(os.path.dirname(self.path) or '.'):
+            return self.path
+        path = os.path.join(self._cache_dir(), 'save_plain.json')
+        open(path, 'w', encoding='utf-8', newline='').write(self.text)
+        self.path = path
+        self.path_var.set(path + '   [LIVE buffer]')
+        self.log('live buffer written to %s' % path)
+        return path
+
     def on_encrypt_save(self):
-        if self.text is None or not self.path:
+        if self.text is None:
             messagebox.showwarning('Encrypt', 'Load or convert a save first.')
             return
+        self._ensure_local_path()
         text = self.text
         adb_hint = self.adb.get().strip()
         serial_hint = self.serial.get().strip()
@@ -2370,9 +2389,10 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def on_apply(self):
-        if self.text is None or not self.path:
+        if self.text is None:
             messagebox.showwarning('Apply', 'No save loaded.')
             return
+        self._ensure_local_path()
         try:
             self.text = ed.recompute_checksums(self.text, False)
             if os.path.exists(self.path):

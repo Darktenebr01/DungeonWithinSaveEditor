@@ -124,6 +124,59 @@ def _uid(adb, serial):
     return m.group(1) if m else None
 
 
+
+def _attach_encrypt(dev, adb, serial, dec_rva, enc_rva, need, side, remote, timeout, log):
+    """Fallback for builds where a Frida spawn dies: launch the game normally,
+    attach before the save loads, and let the same JS replace the buffer."""
+    log('starting the game normally and attaching early...')
+    android.adb(adb, serial, 'shell', 'am', 'force-stop', android.PACKAGE, timeout=20)
+    time.sleep(1)
+    android.adb(adb, serial, 'shell', 'am', 'start', '-n',
+                android.PACKAGE + '/com.unity3d.player.UnityPlayerActivity', timeout=30)
+    pid = None
+    deadline = time.time() + 20
+    while time.time() < deadline and pid is None:
+        try:
+            for p in dev.enumerate_processes():
+                if p.name == 'DungeonWithin':
+                    pid = p.pid
+                    break
+        except Exception:
+            pass
+        if pid is None:
+            time.sleep(0.3)
+    if pid is None:
+        return {'done': False, 'err': 'game process did not appear'}
+    log('attaching to pid %s' % pid)
+    session = dev.attach(pid)
+    script = session.create_script(JS_FILL_AND_ENCRYPT % {
+        'dec': format(dec_rva, 'x'), 'enc': format(enc_rva, 'x'),
+        'need': need, 'side': side, 'path': remote})
+    state = {'done': False, 'err': None, 'clen': 0, 'buf': 0}
+
+    def on_message(msg, data):
+        if msg['type'] != 'send':
+            return
+        p = msg['payload']
+        if p.get('encrypted'):
+            state.update(done=True, clen=p['encrypted'], buf=p.get('buffer', 0))
+            log('encrypted %d bytes from a %d-byte buffer' % (p['encrypted'], p.get('buffer', 0)))
+        elif p.get('err'):
+            state['err'] = p['err']
+        elif 'skip' in p:
+            log('buffer too small (%d), waiting for a bigger one' % p['skip'])
+
+    script.on('message', on_message)
+    script.load()
+    start = time.time()
+    while time.time() - start < timeout and not state['done']:
+        time.sleep(1)
+    try:
+        session.detach()
+    except Exception:
+        pass
+    return state
+
 def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, timeout=90,
                   verify=True):
     adb = adb or android.find_adb()
@@ -142,8 +195,9 @@ def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, t
 
     text = open(plain_path, encoding='utf-8').read()
     mini = minify(text)
-    side_local = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
-                              'DungeonWithinSaveEditor', 'encrypt_payload.json')
+    side_local = os.path.join(os.environ.get('DW_CACHE_DIR')
+                              or os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
+                                              'DungeonWithinSaveEditor'), 'encrypt_payload.json')
     os.makedirs(os.path.dirname(side_local), exist_ok=True)
     open(side_local, 'w', encoding='utf-8', newline='').write(mini)
     need = len(mini.encode('utf-8'))
@@ -157,7 +211,8 @@ def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, t
         android.adb(adb, serial, 'shell', 'chown', '%s:1078' % uid, side, timeout=15)
 
     # keep a copy of the current save so a failed attempt can be rolled back
-    cache = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'DungeonWithinSaveEditor')
+    cache = os.environ.get('DW_CACHE_DIR') or os.path.join(
+        os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'DungeonWithinSaveEditor')
     os.makedirs(cache, exist_ok=True)
     backup = os.path.join(cache, 'encrypt_before.es3')
     android.pull(adb, serial, remote, backup, timeout=120)
@@ -206,6 +261,9 @@ def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, t
             session.detach()
         except Exception:
             pass
+        log('spawned process did not encrypt; retrying with a normal launch')
+        state = _attach_encrypt(dev, adb, serial, dec_rva, enc_rva, need, side, remote, timeout, log)
+    if not state['done']:
         raise RuntimeError('encryption failed%s' % ((': ' + state['err']) if state['err'] else ' (timeout)'))
 
     time.sleep(1)
@@ -218,8 +276,8 @@ def encrypt_plain(plain_path, adb=None, serial=None, endpoint=None, log=print, t
         android.adb(adb, serial, 'shell', 'chown', '%s:1078' % uid, remote, timeout=15)
 
     head = (android.head(adb, serial, remote, 4) or '').strip()
-    if not head.startswith('ES3E'):
-        raise RuntimeError('device save is %r, expected ES3E' % head)
+    if not (head.startswith('ES3E') or head.startswith('ES3B')):
+        raise RuntimeError('device save is %r, expected an ES3 container' % head)
     rc, listing, _ = android.adb(adb, serial, 'shell', 'ls', '-l', remote, timeout=15)
     log('encrypted save: %s' % listing.strip())
 

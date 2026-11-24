@@ -52,6 +52,56 @@ const t = setInterval(() => {
 """
 
 
+
+def _attach_capture(dev, adb, serial, package, dec_rva, timeout, log):
+    """Fallback for builds where a Frida spawn dies: start the game normally and
+    attach before it reaches the save load, then hook DecryptAndDecompress."""
+    import dw_android
+    log('starting the game normally and attaching early...')
+    if adb:
+        dw_android.adb(adb, serial, 'shell', 'am', 'force-stop', package, timeout=20)
+        time.sleep(1)
+        dw_android.adb(adb, serial, 'shell', 'am', 'start', '-n',
+                       package + '/com.unity3d.player.UnityPlayerActivity', timeout=30)
+    pid = None
+    deadline = time.time() + 20
+    while time.time() < deadline and pid is None:
+        try:
+            for p in dev.enumerate_processes():
+                if p.name == 'DungeonWithin':
+                    pid = p.pid
+                    break
+        except Exception:
+            pass
+        if pid is None:
+            time.sleep(0.3)
+    if pid is None:
+        raise RuntimeError('game process did not appear')
+    log('attaching to pid %s' % pid)
+    session = dev.attach(pid)
+    script = session.create_script(JS % int(dec_rva))
+    state = {'data': None}
+
+    def on_message(msg, data):
+        if msg['type'] == 'send':
+            p = msg['payload']
+            log(str(p))
+            if data is not None and state['data'] is None:
+                state['data'] = bytes(data)
+                log('captured plaintext: %d bytes' % len(data))
+        else:
+            log('script error: %s' % msg.get('description'))
+
+    script.on('message', on_message)
+    script.load()
+    deadline = time.time() + timeout
+    while time.time() < deadline and state['data'] is None:
+        time.sleep(0.3)
+    session.detach()
+    if state['data'] is None:
+        raise RuntimeError('no save decrypted within %ds after attaching' % timeout)
+    return state['data']
+
 def convert_save(endpoint=None, dec_rva=None, timeout=45, package=DEFAULT_PACKAGE,
                  adb=None, serial=None, log=print):
     """Run the game once and capture the decrypted save bytes.
@@ -106,7 +156,12 @@ def convert_save(endpoint=None, dec_rva=None, timeout=45, package=DEFAULT_PACKAG
     while time.time() < deadline and state['data'] is None:
         time.sleep(0.3)
     if state['data'] is None:
-        raise RuntimeError('no save decrypted within %ds (is save.es3 present on the device?)' % timeout)
+        log('spawned process produced no plaintext; retrying with a normal launch')
+        try:
+            session.detach()
+        except Exception:
+            pass
+        return _attach_capture(dev, adb, serial, package, int(dec_rva), timeout, log)
     return state['data']
 
 

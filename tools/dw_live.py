@@ -62,6 +62,9 @@ def pull_plain(adb, serial, remote_path):
     local = os.path.join(WORK_DIR, 'save.es3')
     _pull(adb, serial, remote_path, local)
     data = open(local, 'rb').read()
+    if data[:4] == b'ES3B':
+        raise RuntimeError('ES3B save (game 0.7.8+): the local reader only handles ES3E; '
+                           'use Convert encrypted... once to load it')
     if dw_es3.is_container(data):
         plain = dw_es3.decrypt(data)
     elif data[:1] in (b'{', b'['):
