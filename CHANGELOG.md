@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.11
+
+- **Set awake stats** no longer fails with `KeyError: 'STR'` when a unit's `awakeEft` vault is empty.
+  Missing keys are inserted into the vault before the checksum is recomputed.
+
+
 ## 1.4.10
 
 - Unit stats: the short labels (INT/WIS/CHA) map to the 0.7.8 `statEft` keys (`Intelligence`,

@@ -76,6 +76,20 @@ def get_token(text, key, start=0, end=None):
     return text[i:j].strip()
 
 
+
+def set_or_add_token(text, key, value, start=0, end=None):
+    """Set a scalar, or insert it before the object's closing brace if missing."""
+    try:
+        return set_token(text, key, value, start, end)
+    except KeyError:
+        i, j = start, end
+        close = text.find('}', i)
+        if close < 0:
+            raise
+        body = text[i + 1:close].strip()
+        sep = ', ' if body else ' '
+        return text[:close] + sep + '"%s" : %s' % (key, value) + ' ' + text[close:]
+
 def set_token(text, key, value, start=0, end=None):
     i, j = value_span(text, key, start, end)
     return text[:i] + ' ' + value + ' ' + text[j:]

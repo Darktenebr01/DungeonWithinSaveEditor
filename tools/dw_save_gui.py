@@ -2788,7 +2788,7 @@ class App(tk.Tk):
             ai, aj = ed.object_span(self.text, 'awakeEft', s, e)
             vi, vj = ed.object_span(self.text, 'values', ai, aj)
             for st in STATS:
-                self.text = ed.set_token(self.text, st, str(int(self.awake_vars[st].get())), vi, vj)
+                self.text = ed.set_or_add_token(self.text, st, str(int(self.awake_vars[st].get())), vi, vj)
             self.text = ed.recompute_checksums(self.text, False)
             self._reload_from_text()
             self.log('unit %d awake stats updated' % idx)
