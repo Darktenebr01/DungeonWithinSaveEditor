@@ -32,6 +32,19 @@ import frida
 
 import dw_android as android
 
+_ACTIVE = {'session': None, 'stop': False}
+
+
+def stop_active():
+    _ACTIVE['stop'] = True
+    sess = _ACTIVE.get('session')
+    if sess is not None:
+        try:
+            sess.detach()
+        except Exception:
+            pass
+        _ACTIVE['session'] = None
+
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'work', 'live_stats')
 CACHE_FILE = os.path.join(CACHE_DIR, 'live_map_rvas.json')
 
@@ -286,6 +299,7 @@ def main():
         elif st == 'error':
             print('ERROR:', p.get('error'), flush=True)
 
+    _ACTIVE['session'] = session
     script.on('message', on_message)
     script.load()
     if args.spawn:
@@ -313,7 +327,7 @@ def main():
         if args.wait and args.wait > 0:
             time.sleep(args.wait)
         else:
-            while True:
+            while not _ACTIVE['stop']:
                 time.sleep(1)
     except KeyboardInterrupt:
         pass

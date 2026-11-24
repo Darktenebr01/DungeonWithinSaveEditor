@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.14
+
+- **Live Dark Lord / Live map work in the packaged exe.** They no longer launch helper `.py` files (which
+  are absent next to the exe); the editor runs the hook modules in-process, with the same frida/adb stack.
+- **Stop** detaches the hook via a module-level stop flag instead of terminating a child process.
+- Verified on 0.7.8: live stats resolved all eight UnitTable getters and installed the hook.
+
+
 ## 1.4.13
 
 - **Convert** and **Encrypt** now launch the game first and attach to it, instead of trying a Frida

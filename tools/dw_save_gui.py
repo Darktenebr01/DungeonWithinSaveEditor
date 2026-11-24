@@ -542,34 +542,58 @@ class App(tk.Tk):
         self._live_use_pending = True
         self.on_live_pull()
 
+    def _run_inproc(self, modname, argv, label, status_var):
+        import importlib, contextlib
+        def work():
+            mod = importlib.import_module(modname)
+            old = sys.argv
+            sys.argv = [modname] + argv
+            outer = self
+            class _Stream:
+                def write(self, s):
+                    s = s.rstrip('\n')
+                    if s:
+                        try:
+                            outer.after(0, lambda m=s: outer.log(m))
+                        except Exception:
+                            pass
+                    m = re.search(r'\[\s*(\d+)/(\d+)\]', s)
+                    if m:
+                        try:
+                            outer.after(0, lambda i=m.group(1), n=m.group(2): status_var.set('resolving %s/%s' % (i, n)))
+                        except Exception:
+                            pass
+                    elif 'hooked' in s or s.startswith('live.'):
+                        try:
+                            outer.after(0, lambda: status_var.set('active'))
+                        except Exception:
+                            pass
+                def flush(self):
+                    pass
+            try:
+                with contextlib.redirect_stdout(_Stream()), contextlib.redirect_stderr(_Stream()):
+                    mod.main()
+            except Exception as e:
+                msg = '%s failed: %s' % (label, e)
+                try:
+                    outer.after(0, lambda: (outer.log(msg), status_var.set(str(e)[:80])))
+                except Exception:
+                    pass
+            finally:
+                sys.argv = old
+        self.log('%s: starting in-process' % label)
+        threading.Thread(target=work, daemon=True).start()
+
     def on_start_live_hook(self):
-        proc = getattr(self, '_live_proc', None)
-        if proc is not None and proc.poll() is None:
-            messagebox.showinfo('Live stats', 'The hook is already running.')
-            return
-        script = os.path.join(HERE, 'dw_live_stats.py')
-        if not os.path.exists(script):
-            messagebox.showerror('Live stats', 'dw_live_stats.py not found next to the editor.')
-            return
-        if getattr(sys, 'frozen', False):
-            messagebox.showerror('Live stats', 'Live hooks need the source checkout (python tools/dw_live_stats.py).')
-            return
-        cmd = [sys.executable, '-u', script, '--attach']
+        argv = ['--attach']
         for key, flag in (('hp', '--hp'), ('str', '--str'), ('dex', '--dex'), ('con', '--con'),
                           ('int', '--int'), ('wis', '--wis'), ('cha', '--cha')):
             value = self.live_stats[key].get().strip()
             if value:
-                cmd += [flag, value]
-        cmd += ['--wait', '0']
-        try:
-            self._live_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                               text=True, bufsize=1, creationflags=android.NO_WINDOW)
-        except Exception as e:
-            messagebox.showerror('Live stats', str(e))
-            return
+                argv += [flag, value]
+        argv += ['--wait', '0']
         self.live_hook.set('resolving (about 15 s)...')
-        self.log('live stats: ' + ' '.join(cmd[2:]))
-        threading.Thread(target=self._pump_live_hook, args=(self._live_proc,), daemon=True).start()
+        self._run_inproc('dw_live_stats', argv, 'Live stats', self.live_hook)
 
     def _pump_live_hook(self, proc):
         try:
@@ -604,6 +628,11 @@ class App(tk.Tk):
         self.destroy()
 
     def on_stop_live_hook(self):
+        try:
+            import dw_live_stats as _mod
+            _mod.stop_active()
+        except Exception:
+            pass
         proc = getattr(self, '_live_proc', None)
         if proc is not None and proc.poll() is None:
             try:
@@ -618,57 +647,16 @@ class App(tk.Tk):
         self._start_map_process([])
 
     def _start_map_process(self, extra):
-        proc = getattr(self, '_map_proc', None)
-        if proc is not None and proc.poll() is None:
-            messagebox.showinfo('Live map', 'The map hook is already running.')
-            return
-        script = os.path.join(HERE, 'dw_live_map.py')
-        if not os.path.exists(script):
-            messagebox.showerror('Live map', 'dw_live_map.py not found next to the editor.')
-            return
-        if getattr(sys, 'frozen', False):
-            messagebox.showerror('Live map', 'Live hooks need the source checkout (python tools/dw_live_map.py).')
-            return
-        cmd = [sys.executable, '-u', script, '--attach', '--wait', '0'] + list(extra)
-        try:
-            self._map_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                              text=True, bufsize=1, creationflags=android.NO_WINDOW)
-        except Exception as e:
-            messagebox.showerror('Live map', str(e))
-            return
+        argv = ['--attach'] + list(extra)
         self.live_map.set('starting...')
-        self.log('live map: ' + ' '.join(cmd[2:]))
-        threading.Thread(target=self._pump_map_hook, args=(self._map_proc,), daemon=True).start()
-
-    def _pump_map_hook(self, proc):
-        try:
-            for line in proc.stdout:
-                line = line.rstrip()
-                if not line:
-                    continue
-                if "'stage': 'scan" in line or "'stage': 'module'" in line:
-                    continue
-                self.log('live map: ' + line)
-                m = re.search(r'\[\s*(\d+)/(\d+)\]', line)
-                if m:
-                    self.after(0, lambda i=m.group(1), n=m.group(2): self.live_map.set('resolving %s/%s' % (i, n)))
-                elif 'map hook ready' in line:
-                    self.after(0, lambda: self.live_map.set('active - reopen the run map'))
-                elif 'Traceback' in line or 'Error' in line:
-                    self.after(0, lambda l=line: self.live_map.set(l[:80]))
-        except Exception:
-            pass
-        self.after(0, lambda: self.live_map.set('stopped'))
-
-    def on_start_map_turn(self):
-        try:
-            turn = int(self.map_turn.get())
-        except ValueError:
-            messagebox.showerror('Live map', 'Turn must be a number.')
-            return
-        self._start_map_process(['--turn', str(turn)])
+        self._run_inproc('dw_live_map', argv, 'Live map', self.live_map)
 
     def on_stop_map_hook(self):
+        try:
+            import dw_live_map as _mod
+            _mod.stop_active()
+        except Exception:
+            pass
         proc = getattr(self, '_map_proc', None)
         if proc is not None and proc.poll() is None:
             try:
