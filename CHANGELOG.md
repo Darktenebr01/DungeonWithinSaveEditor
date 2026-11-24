@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.9
+
+- Fixed the packaged exe failing at startup with `ModuleNotFoundError: No module named '_cffi_backend'`:
+  the PyInstaller spec now collects `cffi` and `cryptography` and lists `_cffi_backend` as a hidden import.
+- The ES3E reader (`dw_es3`) is imported lazily, so the editor starts even where that optional backend
+  is unavailable; the live page then tells you to use Convert for `ES3B` saves.
+
+
 ## 1.4.8
 
 - **Dungeon Within 0.7.8 support.** The game now writes an `ES3B` container and moved data:

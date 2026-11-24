@@ -4,6 +4,11 @@
 from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = collect_all('frida')
+from PyInstaller.utils.hooks import collect_all as _ca
+for _pkg in ('cffi', 'cryptography'):
+    _d, _b, _h = _ca(_pkg)
+    datas += _d; binaries += _b; hiddenimports += _h
+hiddenimports += ['_cffi_backend']
 datas = list(datas) + [
     ('tools/parts_catalog.json', '.'),
     ('tools/facility_catalog.json', '.'),

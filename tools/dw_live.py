@@ -12,7 +12,6 @@ import os
 import time
 
 import dw_android as android
-import dw_es3
 
 WORK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'work', 'live_pull')
 
@@ -62,6 +61,10 @@ def pull_plain(adb, serial, remote_path):
     local = os.path.join(WORK_DIR, 'save.es3')
     _pull(adb, serial, remote_path, local)
     data = open(local, 'rb').read()
+    try:
+        import dw_es3
+    except Exception as e:
+        raise RuntimeError('local ES3E reader unavailable (%s); use Convert encrypted...' % e)
     if data[:4] == b'ES3B':
         raise RuntimeError('ES3B save (game 0.7.8+): the local reader only handles ES3E; '
                            'use Convert encrypted... once to load it')
