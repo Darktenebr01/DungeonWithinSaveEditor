@@ -2103,10 +2103,10 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror('Find save', str(e))
             return
-        if data[:4] == b'ES3E':
+        if data[:4] in (b'ES3E', b'ES3B'):
             self.path = path
-            self.path_var.set(path + '   [ENCRYPTED]')
-            self.log('detected encrypted save: %s' % path)
+            self.path_var.set(path + '   [ENCRYPTED %s]' % data[:4].decode('ascii'))
+            self.log('detected encrypted save: %s (%s)' % (path, data[:4].decode('ascii')))
             if messagebox.askyesno('Encrypted save',
                                    'Found an encrypted save:\n%s\n\nDecrypt it now with the game?' % path):
                 self._start_convert(path)
@@ -2124,16 +2124,16 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror('Open', str(e))
             return
-        if data[:4] == b'ES3E':
+        if data[:4] in (b'ES3E', b'ES3B'):
             self.path = path
-            self.path_var.set(path + '   [ENCRYPTED]')
+            self.path_var.set(path + '   [ENCRYPTED %s]' % data[:4].decode('ascii'))
             self.text = None
             self.obj = None
             for tab in (self.tab_res, self.tab_units, self.tab_mem, self.tab_adv):
                 pass
-            self.log('This file is encrypted (ES3E). Use "Convert encrypted…" to decrypt it with the game.')
+            self.log('This file is encrypted (' + data[:4].decode('ascii') + '). Use "Convert encrypted…" to decrypt it with the game.')
             messagebox.showinfo('Encrypted save',
-                                'This save is encrypted (ES3E).\n\nUse "Convert encrypted…": it pushes the file to the '
+                                'This save is encrypted (' + data[:4].decode('ascii') + ').\n\nUse "Convert encrypted…": it pushes the file to the '
                                 'emulator, starts the game to decrypt it, and loads the plain JSON.')
             return
         try:

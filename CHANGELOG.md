@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.12
+
+- **Find save / Open** recognise `ES3B` containers as encrypted, not as broken JSON. Previously an
+  0.7.8 save was treated as plain text, so detection looked like it failed and the game was never
+  offered for a decrypt run.
+- The encrypted-save prompt names the container (`ES3E`/`ES3B`).
+
+
 ## 1.4.11
 
 - **Set awake stats** no longer fails with `KeyError: 'STR'` when a unit's `awakeEft` vault is empty.
